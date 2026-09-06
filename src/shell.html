@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>高中化学方程式 · 微观 3D 可视化</title>
+<!--STYLE_KATEX-->
+<!--STYLE_APP-->
+</head>
+<body class="bg-[#eef2f7] text-slate-900 h-screen flex flex-col overflow-hidden font-sans">
+
+<!-- ============ 顶部：册 / 章 两级选择 ============ -->
+<header class="shrink-0 bg-white border-b border-slate-200 z-40">
+    <div class="px-6 pt-4 pb-3 flex items-center justify-between gap-4">
+        <div class="flex items-baseline gap-3 min-w-0">
+            <h1 class="text-base font-bold text-slate-900 tracking-wide whitespace-nowrap">高中化学方程式 · 微观 3D 可视化</h1>
+            <span class="text-[11px] text-slate-400 whitespace-nowrap" id="global-count"></span>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+            <button id="collapse-toggle" class="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-600 transition-colors cursor-pointer flex items-center gap-1.5" title="收起 / 展开 选择栏（快捷键 H）">
+                <svg id="collapse-icon" class="w-4 h-4 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                <span id="collapse-text" class="text-xs font-medium hidden sm:inline">收起</span>
+            </button>
+            <input id="search-input" type="search" placeholder="搜索方程…" autocomplete="off"
+                   class="hidden sm:block w-40 md:w-56 text-xs px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-sky-400 focus:outline-none transition-colors">
+        </div>
+    </div>
+
+    <!-- 可收起区：分册 / 章节 / 方程卡片 三行 -->
+    <div id="nav-collapse">
+        <!-- 分册 tab -->
+        <div class="px-4 pb-2 overflow-x-auto" id="book-bar">
+            <div class="flex gap-2 min-w-max" id="book-row"></div>
+        </div>
+
+        <!-- 章节导航 -->
+        <div id="chapter-bar" class="px-4 pb-3 overflow-x-auto border-t border-slate-100">
+            <div class="flex gap-2 min-w-max pt-3" id="chapter-row"></div>
+        </div>
+
+        <!-- 本章方程卡片（由 player.js 填充） -->
+        <div class="px-4 pb-3 overflow-x-auto border-t border-slate-100">
+            <div class="flex gap-2 min-w-max pt-3" id="card-row"></div>
+        </div>
+    </div>
+</header>
+
+<!-- 播放器用到的隐藏信息位（page-title / eq-count 由 shell 更新） -->
+<div class="hidden" id="page-title"></div>
+<div class="hidden" id="eq-count"></div>
+
+<!-- ============ 主体：3D 视口 + 右侧面板 ============ -->
+<!-- 桌面：视口锁定，右侧面板独立滚动；移动端：整体滚动，3D 保证最小高度 -->
+<main class="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden relative">
+    <!--SKELETON-->
+</main>
+
+<!-- ============ 搜索结果浮层 ============ -->
+<div id="search-overlay" class="hidden fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm" >
+    <div class="max-w-2xl mx-auto mt-16 mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <div class="p-3 border-b border-slate-200 flex items-center gap-2">
+            <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input id="search-input-2" type="search" placeholder="搜索化学方程式（如 氯气、H2SO4、电解）" autocomplete="off"
+                   class="flex-1 text-sm focus:outline-none">
+            <button id="search-close" class="text-xs text-slate-400 hover:text-slate-600 px-2 py-1 rounded cursor-pointer">关闭 Esc</button>
+        </div>
+        <div id="search-results" class="max-h-[60vh] overflow-y-auto divide-y divide-slate-100"></div>
+    </div>
+</div>
+
+<!--DATA-->
+<!--VENDOR_KATEX_JS-->
+<!--VENDOR_THREE-->
+<!--VENDOR_ORBIT-->
+<!--VENDOR_AUTORENDER-->
+<!--VENDOR_TAILWIND-->
+<!--PLAYER_JS-->
+<script>
+/* ============ 单页外壳：册 -> 章 -> 方程 三级导航 ============ */
+(function () {
+    'use strict';
+
+    var BOOKS = [];      // [{book, chapters:[{title, reactions:[]}]}]
+    var curBook = 0, curChap = 0, player = null;
+
+    // ---------- 工具 ----------
+    function $(id) { return document.getElementById(id); }
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+        });
+    }
+    // 把 LaTeX/Unicode 方程转成可搜索的纯文本
+    function plainEq(s) {
+        return String(s || '')
+            .replace(/\\mathrm\s*\{/g, ' ').replace(/\\text\s*\{/g, ' ')
+            .replace(/\\[a-zA-Z]+/g, ' ')
+            .replace(/[_^{}&]/g, ' ')
+            .replace(/\s+/g, ' ').trim();
+    }
+
+    // ---------- 构建导航 ----------
+    function buildBookRow() {
+        var row = $('book-row');
+        row.innerHTML = '';
+        BOOKS.forEach(function (b, i) {
+            var n = b.chapters.reduce(function (s, c) { return s + c.reactions.length; }, 0);
+            var el = document.createElement('button');
+            el.className = 'tab-btn px-4 py-2 rounded-xl text-sm font-semibold border transition-colors cursor-pointer whitespace-nowrap ' +
+                (i === curBook ? 'tab-active' : 'tab-idle');
+            el.textContent = b.book + '（' + n + '）';
+            el.onclick = function () { selectBook(i); };
+            row.appendChild(el);
+        });
+    }
+
+    function buildChapterRow() {
+        var row = $('chapter-row');
+        row.innerHTML = '';
+        var book = BOOKS[curBook];
+        if (!book) return;
+        book.chapters.forEach(function (c, i) {
+            var el = document.createElement('button');
+            el.className = 'chap-btn px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer whitespace-nowrap ' +
+                (i === curChap ? 'chap-active' : 'chap-idle');
+            el.textContent = c.title + '（' + c.reactions.length + '）';
+            el.onclick = function () { selectChapter(i); };
+            row.appendChild(el);
+        });
+    }
+
+    // ---------- 切换 ----------
+    function selectBook(i) {
+        if (i === curBook) return;
+        curBook = i; curChap = 0;
+        buildBookRow(); buildChapterRow(); mount();
+        saveHash();
+    }
+
+    function selectChapter(i) {
+        if (i === curChap) return;
+        curChap = i;
+        buildChapterRow(); mount();
+        saveHash();
+    }
+
+    // 挂载当前章节的播放器
+    function mount(eqIdx) {
+        var book = BOOKS[curBook];
+        if (!book) return;
+        var chap = book.chapters[curChap];
+        if (!chap || !chap.reactions.length) return;
+
+        if (player) { try { player.destroy(); } catch (e) {} player = null; }
+        // 清掉上一次的残留 DOM
+        $('card-row').innerHTML = '';
+        $('stepper').innerHTML = '';
+        $('conservation-chips').innerHTML = '';
+        $('legend-grid').innerHTML = '';
+        $('labels-overlay').innerHTML = '';
+
+        player = window.ChemPlayer.create(chap.reactions);
+        player.start();
+        if (typeof eqIdx === 'number' && eqIdx > 0) player.switchReaction(eqIdx);
+
+        // 面包屑
+        $('page-title').textContent = book.book + ' · ' + chap.title;
+        $('eq-count').textContent = '第 ' + (curChap + 1) + '/' + book.chapters.length + ' 章 · 共 ' + chap.reactions.length + ' 个反应';
+        document.title = book.book + ' · ' + chap.title + ' · 微观 3D 可视化';
+    }
+
+    // ---------- 搜索 ----------
+    function allReactions() {
+        var out = [];
+        BOOKS.forEach(function (b, bi) {
+            b.chapters.forEach(function (c, ci) {
+                c.reactions.forEach(function (r, ri) {
+                    out.push({ bi: bi, ci: ci, ri: ri, r: r, book: b.book, chap: c.title });
+                });
+            });
+        });
+        return out;
+    }
+
+    function runSearch(q) {
+        var box = $('search-results');
+        q = (q || '').trim().toLowerCase();
+        if (!q) { box.innerHTML = '<div class="p-6 text-center text-xs text-slate-400">输入关键字搜索，如「氯气」「电解」「置换」</div>'; return; }
+
+        var hits = allReactions().filter(function (it) {
+            var r = it.r;
+            var hay = [
+                plainEq(r.meta && r.meta.equation), r.card,
+                (r.labels || []).map(function (l) { return l.text; }).join(' '),
+                it.book, it.chap
+            ].join(' ').toLowerCase();
+            return hay.indexOf(q) >= 0;
+        }).slice(0, 80);
+
+        if (!hits.length) { box.innerHTML = '<div class="p-6 text-center text-xs text-slate-400">没有匹配的方程</div>'; return; }
+
+        box.innerHTML = hits.map(function (it) {
+            return '<button class="w-full text-left px-4 py-2.5 hover:bg-slate-50 transition-colors cursor-pointer" data-bi="' + it.bi + '" data-ci="' + it.ci + '" data-ri="' + it.ri + '">' +
+                '<div class="text-[10px] text-slate-400 mb-0.5">' + esc(it.book) + ' · ' + esc(it.chap) + '</div>' +
+                '<div class="text-sm text-slate-700 font-medium">' + esc(it.r.card || plainEq(it.r.meta && it.r.meta.equation)) + '</div>' +
+                '</button>';
+        }).join('');
+
+        box.querySelectorAll('button').forEach(function (b) {
+            b.onclick = function () {
+                curBook = +b.dataset.bi; curChap = +b.dataset.ci;
+                buildBookRow(); buildChapterRow(); mount(+b.dataset.ri);
+                saveHash(); closeSearch();
+            };
+        });
+    }
+
+    function openSearch() {
+        $('search-overlay').classList.remove('hidden');
+        $('search-input-2').value = $('search-input').value || '';
+        $('search-input-2').focus();
+        runSearch($('search-input-2').value);
+    }
+    function closeSearch() { $('search-overlay').classList.add('hidden'); }
+
+    // 当前章节的方程数
+    function curCount() {
+        var b = BOOKS[curBook];
+        if (!b) return 0;
+        var c = b.chapters[curChap];
+        return c ? c.reactions.length : 0;
+    }
+
+    // ---------- 深链：#册/章/方程 ----------
+    function saveHash() {
+        var eq = player ? player.index : 0;
+        try { history.replaceState(null, '', '#' + curBook + '/' + curChap + '/' + eq); } catch (e) {}
+    }
+    function loadHash() {
+        var m = (location.hash || '').replace(/^#/, '').split('/');
+        if (m.length === 3) {
+            var b = +m[0], c = +m[1], r = +m[2];
+            if (BOOKS[b] && BOOKS[b].chapters[c]) { curBook = b; curChap = c; return r || 0; }
+        }
+        return 0;
+    }
+
+    // ---------- 启动 ----------
+    function boot() {
+        BOOKS = (window.CHEM_DATA && window.CHEM_DATA.__books) || [];
+        if (!BOOKS.length) {
+            document.body.innerHTML = '<div class="p-10 text-sm text-slate-500">数据未加载：请确认数据脚本已包含。</div>';
+            return;
+        }
+        var total = BOOKS.reduce(function (s, b) {
+            return s + b.chapters.reduce(function (t, c) { return t + c.reactions.length; }, 0);
+        }, 0);
+        var chaps = BOOKS.reduce(function (s, b) { return s + b.chapters.length; }, 0);
+        $('global-count').textContent = BOOKS.length + ' 册 · ' + chaps + ' 章 · ' + total + ' 个方程';
+
+        var eqIdx = loadHash();
+        buildBookRow(); buildChapterRow(); mount(eqIdx);
+
+        // 卡片切换时同步 URL
+        var row = $('card-row');
+        row.addEventListener('click', function () { setTimeout(saveHash, 0); }, true);
+
+        // 搜索
+        $('search-input').addEventListener('focus', openSearch);
+        $('search-input-2').addEventListener('input', function (e) { runSearch(e.target.value); });
+        $('search-close').onclick = closeSearch;
+        $('search-overlay').addEventListener('click', function (e) { if (e.target === $('search-overlay')) closeSearch(); });
+
+        // 选择栏（分册 / 章节 / 方程卡片 三行）整体收起，状态记在本地
+        var navBox = $('nav-collapse'), collapsed = false;
+        try { collapsed = localStorage.getItem('chem.nav.collapsed') === '1'; } catch (e) {}
+        function applyCollapse() {
+            navBox.classList.toggle('hidden', collapsed);
+            $('collapse-icon').style.transform = collapsed ? 'rotate(-90deg)' : '';
+            $('collapse-text').textContent = collapsed ? '展开' : '收起';
+            $('collapse-toggle').title = (collapsed ? '展开' : '收起') + ' 选择栏（快捷键 H）';
+            try { localStorage.setItem('chem.nav.collapsed', collapsed ? '1' : '0'); } catch (e) {}
+            // 视口高度变了，通知 3D 重算画布尺寸
+            setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 40);
+        }
+        $('collapse-toggle').onclick = function () { collapsed = !collapsed; applyCollapse(); };
+        applyCollapse();
+
+        // 键盘统一入口：Esc 关闭 / Ctrl+K 搜索 / H 收起选择栏 / ← → 切换方程
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') closeSearch();
+            if (e.key === 'k' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openSearch(); }
+            var ae = document.activeElement;
+            if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+            if (e.key === 'h' || e.key === 'H') { collapsed = !collapsed; applyCollapse(); return; }
+            if (!player || !$('search-overlay').classList.contains('hidden')) return;
+            if (e.key === 'ArrowRight') { player.switchReaction(Math.min(curCount() - 1, player.index + 1)); saveHash(); }
+            if (e.key === 'ArrowLeft') { player.switchReaction(Math.max(0, player.index - 1)); saveHash(); }
+        });
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+    else boot();
+})();
+</script>
+</body>
+</html>

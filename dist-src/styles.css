@@ -1,0 +1,16 @@
+:root { --accent: #6366f1; --accent-soft: rgba(99,102,241,0.25); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #e2e8f0; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .acc-text { color: var(--accent); }
+        .acc-bg { background: var(--accent); }
+        .acc-grad { background: linear-gradient(90deg, var(--accent-soft), var(--accent)); }
+        input[type=range].acc-range { accent-color: var(--accent); }
+        .acc-ring:focus { outline: none; box-shadow: 0 0 0 2px var(--accent); }
+        .play-btn { background: var(--accent); }
+        .play-btn:hover { filter: brightness(1.08); }
+
+        .card-active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .card-idle { background: #fff; color: #64748b; border-color: #e2e8f0; }
+        .card-idle:hover { border-color: var(--accent); color: var(--accent); }

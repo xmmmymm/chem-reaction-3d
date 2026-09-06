@@ -1,0 +1,129 @@
+
+
+        <!-- 3D Viewport（占满剩余高度，随选择栏收起而变高；移动端保证最小可视高度） -->
+        <div class="relative bg-[#eef2f7] flex flex-col min-h-0 flex-1 min-h-[46vh] lg:min-h-0">
+            <div id="labels-overlay" class="absolute inset-0 pointer-events-none z-20 overflow-hidden"></div>
+            <div id="canvas-container" class="flex-1 min-h-0 w-full cursor-grab active:cursor-grabbing"></div>
+
+            <!-- Labels show / hide toggle -->
+            <button id="labels-toggle" class="absolute top-4 left-4 z-30 bg-white/85 border border-slate-200 backdrop-blur text-xs pl-2.5 pr-3 py-1.5 rounded-lg text-slate-600 shadow-sm hover:bg-white transition-colors flex items-center gap-1.5 cursor-pointer select-none" title="显示 / 隐藏标签">
+                <svg id="labels-toggle-icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                <span id="labels-toggle-text">标签</span>
+            </button>
+
+            <!-- Energy diagram (optional) -->
+            <div id="energy-panel" class="absolute top-4 right-4 hidden bg-white/85 border border-slate-200 backdrop-blur rounded-xl p-3 select-none shadow-sm">
+                <div class="text-[10px] font-bold text-slate-500 tracking-wider uppercase mb-1" id="energy-title">能量·反应进程</div>
+                <canvas id="energy-canvas" width="200" height="110"></canvas>
+            </div>
+
+            <div class="absolute bottom-4 left-4 bg-white/85 border border-slate-200 backdrop-blur text-xs px-3 py-2 rounded-lg text-slate-500 select-none shadow-sm">
+                <div class="flex items-center space-x-1.5">
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
+                    <span id="drag-hint">拖拽旋转 · 滚轮缩放 · 右键平移</span>
+                </div>
+            </div>
+            <div class="absolute bottom-0 left-0 right-0 h-1 bg-slate-200">
+                <div id="viewport-progress" class="h-full acc-grad" style="width:0%"></div>
+            </div>
+        </div>
+
+        <!-- Right panel（自身可滚动；移动端让页面整体滚动） -->
+        <div class="w-full lg:w-[420px] xl:w-[460px] shrink-0 bg-white border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col lg:overflow-y-auto min-h-0 flex-none lg:flex-none">
+
+            <div class="p-6 border-b border-slate-200 bg-slate-50">
+                <h1 id="title" class="text-lg font-bold tracking-wide text-slate-900">化学反应 3D 虚拟实验室</h1>
+                <p id="subtitle" class="text-xs acc-text mt-1"></p>
+                <div id="equation-container" class="bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 mt-4 text-sm overflow-x-auto"></div>
+            </div>
+
+            <!-- Stepper -->
+            <div class="p-6 border-b border-slate-200 bg-slate-50">
+                <div class="relative">
+                    <div class="absolute top-4 left-5 right-5 h-0.5 bg-slate-200">
+                        <div id="step-progress-line" class="h-full acc-bg transition-all duration-300" style="width:0%"></div>
+                    </div>
+                    <div id="stepper" class="relative flex justify-between"></div>
+                </div>
+
+                <div class="mt-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <span id="progress-label" class="text-[11px] font-bold text-slate-500 tracking-wider uppercase">反应进度</span>
+                        <span id="progress-readout" class="text-xs font-mono font-bold acc-text tabular-nums">0%</span>
+                    </div>
+                    <input type="range" id="reaction-slider" min="0" max="100" value="0" class="acc-range acc-ring w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                    <p id="slider-hint" class="text-[11px] text-slate-400 mt-2 leading-relaxed"></p>
+                </div>
+
+                <div class="flex items-center gap-2 mt-4">
+                    <button id="prev-btn" class="p-2.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-slate-600 transition-colors cursor-pointer" title="上一步">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                    </button>
+                    <button id="play-btn" class="play-btn flex-1 px-4 py-2.5 text-white rounded-lg flex items-center justify-center space-x-1.5 transition-colors shadow-lg cursor-pointer">
+                        <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        <span id="play-text">自动演示</span>
+                    </button>
+                    <button id="next-btn" class="p-2.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-slate-600 transition-colors cursor-pointer" title="下一步">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </button>
+                    <button id="reset-btn" class="p-2.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg transition-colors cursor-pointer" title="复位">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-5 space-y-4">
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <h2 class="text-base font-bold text-slate-900 mb-3 flex items-center gap-2">
+                        <svg class="w-4 h-4 acc-text shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        <span id="step-title-text">—</span>
+                    </h2>
+                    <p id="explanation-text" class="text-sm text-slate-700 leading-relaxed min-h-[140px]">加载中...</p>
+                </div>
+
+                <!-- Conservation counter -->
+                <div id="conservation-panel" class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[11px] font-bold text-slate-500 tracking-wider uppercase" id="conservation-label">原子守恒</span>
+                        <span class="text-[10px] text-emerald-600" id="conservation-note">反应前后不变</span>
+                    </div>
+                    <div id="conservation-chips" class="flex flex-wrap gap-2 mt-3"></div>
+                </div>
+
+                <!-- Overlay toggles (flame / catalyst) -->
+                <div id="toggle-flame" class="hidden p-4 rounded-xl bg-amber-50 border border-amber-200 items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12.963 2.286a.75.75 0 00-1.071-.136 9.742 9.742 0 00-3.539 6.177 7.547 7.547 0 01-1.705-1.715.75.75 0 00-1.152-.082A9 9 0 1015.68 4.534a7.46 7.46 0 01-2.717-2.248z"/></svg>
+                        </div>
+                        <div><h4 class="text-sm font-bold text-slate-800" id="flame-title">燃烧火焰与高温</h4>
+                             <p class="text-xs text-amber-700" id="flame-sub">显示反应放出的热与光</p></div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input type="checkbox" id="flame-toggle" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-300 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
+                </div>
+
+                <div id="toggle-catalyst" class="hidden p-4 rounded-xl bg-slate-100 border border-slate-200 items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style="background: var(--accent-soft); color: var(--accent)">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        </div>
+                        <div><h4 class="text-sm font-bold text-slate-800" id="catalyst-title">催化剂</h4>
+                             <p class="text-xs acc-text" id="catalyst-sub">显示催化剂如何参与反应</p></div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input type="checkbox" id="catalyst-toggle" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-300 rounded-full peer peer-checked:bg-[color:var(--accent)] peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                    </label>
+                </div>
+
+                <!-- Atom legend -->
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <span class="text-[11px] font-bold text-slate-500 tracking-wider uppercase" id="legend-label">原子图例</span>
+                    <div id="legend-grid" class="grid grid-cols-2 gap-2.5 mt-3 text-xs"></div>
+                </div>
+            </div>
+        </div>
+    

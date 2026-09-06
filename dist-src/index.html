@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>高中化学方程式 · 微观 3D 可视化</title>
+<link rel="stylesheet" href="vendor/katex.min.css">
+<style>
+:root { --accent: #6366f1; --accent-soft: rgba(99,102,241,0.25); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #e2e8f0; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .acc-text { color: var(--accent); }
+        .acc-bg { background: var(--accent); }
+        .acc-grad { background: linear-gradient(90deg, var(--accent-soft), var(--accent)); }
+        input[type=range].acc-range { accent-color: var(--accent); }
+        .acc-ring:focus { outline: none; box-shadow: 0 0 0 2px var(--accent); }
+        .play-btn { background: var(--accent); }
+        .play-btn:hover { filter: brightness(1.08); }
+
+        .card-active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .card-idle { background: #fff; color: #64748b; border-color: #e2e8f0; }
+        .card-idle:hover { border-color: var(--accent); color: var(--accent); }
+
+        .tab-active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .tab-idle { background: #fff; color: #475569; border-color: #e2e8f0; }
+        .tab-idle:hover { border-color: var(--accent); color: var(--accent); }
+        .chap-active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 600; }
+        .chap-idle { background: #fff; color: #64748b; border-color: #e2e8f0; }
+        .chap-idle:hover { border-color: var(--accent); color: var(--accent); }
+        #search-overlay { position: fixed; }
+
+</style>
+</head>
+<body class="bg-[#eef2f7] text-slate-900 h-screen flex flex-col overflow-hidden font-sans">
+
+<!-- ============ 顶部：册 / 章 两级选择 ============ -->
+<header class="shrink-0 bg-white border-b border-slate-200 z-40">
+    <div class="px-6 pt-4 pb-3 flex items-center justify-between gap-4">
+        <div class="flex items-baseline gap-3 min-w-0">
+            <h1 class="text-base font-bold text-slate-900 tracking-wide whitespace-nowrap">高中化学方程式 · 微观 3D 可视化</h1>
+            <span class="text-[11px] text-slate-400 whitespace-nowrap" id="global-count"></span>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+            <button id="collapse-toggle" class="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-600 transition-colors cursor-pointer flex items-center gap-1.5" title="收起 / 展开 选择栏（快捷键 H）">
+                <svg id="collapse-icon" class="w-4 h-4 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                <span id="collapse-text" class="text-xs font-medium hidden sm:inline">收起</span>
+            </button>
+            <input id="search-input" type="search" placeholder="搜索方程…" autocomplete="off"
+                   class="hidden sm:block w-40 md:w-56 text-xs px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-sky-400 focus:outline-none transition-colors">
+        </div>
+    </div>
+
+    <!-- 可收起区：分册 / 章节 / 方程卡片 三行 -->
+    <div id="nav-collapse">
+        <!-- 分册 tab -->
+        <div class="px-4 pb-2 overflow-x-auto" id="book-bar">
+            <div class="flex gap-2 min-w-max" id="book-row"></div>
+        </div>
+
+        <!-- 章节导航 -->
+        <div id="chapter-bar" class="px-4 pb-3 overflow-x-auto border-t border-slate-100">
+            <div class="flex gap-2 min-w-max pt-3" id="chapter-row"></div>
+        </div>
+
+        <!-- 本章方程卡片（由 player.js 填充） -->
+        <div class="px-4 pb-3 overflow-x-auto border-t border-slate-100">
+            <div class="flex gap-2 min-w-max pt-3" id="card-row"></div>
+        </div>
+    </div>
+</header>
+
+<!-- 播放器用到的隐藏信息位（page-title / eq-count 由 shell 更新） -->
+<div class="hidden" id="page-title"></div>
+<div class="hidden" id="eq-count"></div>
+
+<!-- ============ 主体：3D 视口 + 右侧面板 ============ -->
+<!-- 桌面：视口锁定，右侧面板独立滚动；移动端：整体滚动，3D 保证最小高度 -->
+<main class="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden relative">
+    
+
+        <!-- 3D Viewport（占满剩余高度，随选择栏收起而变高；移动端保证最小可视高度） -->
+        <div class="relative bg-[#eef2f7] flex flex-col min-h-0 flex-1 min-h-[46vh] lg:min-h-0">
+            <div id="labels-overlay" class="absolute inset-0 pointer-events-none z-20 overflow-hidden"></div>
+            <div id="canvas-container" class="flex-1 min-h-0 w-full cursor-grab active:cursor-grabbing"></div>
+
+            <!-- Labels show / hide toggle -->
+            <button id="labels-toggle" class="absolute top-4 left-4 z-30 bg-white/85 border border-slate-200 backdrop-blur text-xs pl-2.5 pr-3 py-1.5 rounded-lg text-slate-600 shadow-sm hover:bg-white transition-colors flex items-center gap-1.5 cursor-pointer select-none" title="显示 / 隐藏标签">
+                <svg id="labels-toggle-icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                <span id="labels-toggle-text">标签</span>
+            </button>
+
+            <!-- Energy diagram (optional) -->
+            <div id="energy-panel" class="absolute top-4 right-4 hidden bg-white/85 border border-slate-200 backdrop-blur rounded-xl p-3 select-none shadow-sm">
+                <div class="text-[10px] font-bold text-slate-500 tracking-wider uppercase mb-1" id="energy-title">能量·反应进程</div>
+                <canvas id="energy-canvas" width="200" height="110"></canvas>
+            </div>
+
+            <div class="absolute bottom-4 left-4 bg-white/85 border border-slate-200 backdrop-blur text-xs px-3 py-2 rounded-lg text-slate-500 select-none shadow-sm">
+                <div class="flex items-center space-x-1.5">
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
+                    <span id="drag-hint">拖拽旋转 · 滚轮缩放 · 右键平移</span>
+                </div>
+            </div>
+            <div class="absolute bottom-0 left-0 right-0 h-1 bg-slate-200">
+                <div id="viewport-progress" class="h-full acc-grad" style="width:0%"></div>
+            </div>
+        </div>
+
+        <!-- Right panel（自身可滚动；移动端让页面整体滚动） -->
+        <div class="w-full lg:w-[420px] xl:w-[460px] shrink-0 bg-white border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col lg:overflow-y-auto min-h-0 flex-none lg:flex-none">
+
+            <div class="p-6 border-b border-slate-200 bg-slate-50">
+                <h1 id="title" class="text-lg font-bold tracking-wide text-slate-900">化学反应 3D 虚拟实验室</h1>
+                <p id="subtitle" class="text-xs acc-text mt-1"></p>
+                <div id="equation-container" class="bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 mt-4 text-sm overflow-x-auto"></div>
+            </div>
+
+            <!-- Stepper -->
+            <div class="p-6 border-b border-slate-200 bg-slate-50">
+                <div class="relative">
+                    <div class="absolute top-4 left-5 right-5 h-0.5 bg-slate-200">
+                        <div id="step-progress-line" class="h-full acc-bg transition-all duration-300" style="width:0%"></div>
+                    </div>
+                    <div id="stepper" class="relative flex justify-between"></div>
+                </div>
+
+                <div class="mt-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <span id="progress-label" class="text-[11px] font-bold text-slate-500 tracking-wider uppercase">反应进度</span>
+                        <span id="progress-readout" class="text-xs font-mono font-bold acc-text tabular-nums">0%</span>
+                    </div>
+                    <input type="range" id="reaction-slider" min="0" max="100" value="0" class="acc-range acc-ring w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                    <p id="slider-hint" class="text-[11px] text-slate-400 mt-2 leading-relaxed"></p>
+                </div>
+
+                <div class="flex items-center gap-2 mt-4">
+                    <button id="prev-btn" class="p-2.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-slate-600 transition-colors cursor-pointer" title="上一步">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                    </button>
+                    <button id="play-btn" class="play-btn flex-1 px-4 py-2.5 text-white rounded-lg flex items-center justify-center space-x-1.5 transition-colors shadow-lg cursor-pointer">
+                        <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        <span id="play-text">自动演示</span>
+                    </button>
+                    <button id="next-btn" class="p-2.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-slate-600 transition-colors cursor-pointer" title="下一步">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </button>
+                    <button id="reset-btn" class="p-2.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg transition-colors cursor-pointer" title="复位">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-5 space-y-4">
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <h2 class="text-base font-bold text-slate-900 mb-3 flex items-center gap-2">
+                        <svg class="w-4 h-4 acc-text shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        <span id="step-title-text">—</span>
+                    </h2>
+                    <p id="explanation-text" class="text-sm text-slate-700 leading-relaxed min-h-[140px]">加载中...</p>
+                </div>
+
+                <!-- Conservation counter -->
+                <div id="conservation-panel" class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[11px] font-bold text-slate-500 tracking-wider uppercase" id="conservation-label">原子守恒</span>
+                        <span class="text-[10px] text-emerald-600" id="conservation-note">反应前后不变</span>
+                    </div>
+                    <div id="conservation-chips" class="flex flex-wrap gap-2 mt-3"></div>
+                </div>
+
+                <!-- Overlay toggles (flame / catalyst) -->
+                <div id="toggle-flame" class="hidden p-4 rounded-xl bg-amber-50 border border-amber-200 items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12.963 2.286a.75.75 0 00-1.071-.136 9.742 9.742 0 00-3.539 6.177 7.547 7.547 0 01-1.705-1.715.75.75 0 00-1.152-.082A9 9 0 1015.68 4.534a7.46 7.46 0 01-2.717-2.248z"/></svg>
+                        </div>
+                        <div><h4 class="text-sm font-bold text-slate-800" id="flame-title">燃烧火焰与高温</h4>
+                             <p class="text-xs text-amber-700" id="flame-sub">显示反应放出的热与光</p></div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input type="checkbox" id="flame-toggle" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-300 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
+                </div>
+
+                <div id="toggle-catalyst" class="hidden p-4 rounded-xl bg-slate-100 border border-slate-200 items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style="background: var(--accent-soft); color: var(--accent)">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        </div>
+                        <div><h4 class="text-sm font-bold text-slate-800" id="catalyst-title">催化剂</h4>
+                             <p class="text-xs acc-text" id="catalyst-sub">显示催化剂如何参与反应</p></div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input type="checkbox" id="catalyst-toggle" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-300 rounded-full peer peer-checked:bg-[color:var(--accent)] peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                    </label>
+                </div>
+
+                <!-- Atom legend -->
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <span class="text-[11px] font-bold text-slate-500 tracking-wider uppercase" id="legend-label">原子图例</span>
+                    <div id="legend-grid" class="grid grid-cols-2 gap-2.5 mt-3 text-xs"></div>
+                </div>
+            </div>
+        </div>
+    
+
+</main>
+
+<!-- ============ 搜索结果浮层 ============ -->
+<div id="search-overlay" class="hidden fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm" >
+    <div class="max-w-2xl mx-auto mt-16 mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <div class="p-3 border-b border-slate-200 flex items-center gap-2">
+            <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input id="search-input-2" type="search" placeholder="搜索化学方程式（如 氯气、H2SO4、电解）" autocomplete="off"
+                   class="flex-1 text-sm focus:outline-none">
+            <button id="search-close" class="text-xs text-slate-400 hover:text-slate-600 px-2 py-1 rounded cursor-pointer">关闭 Esc</button>
+        </div>
+        <div id="search-results" class="max-h-[60vh] overflow-y-auto divide-y divide-slate-100"></div>
+    </div>
+</div>
+
+<script src="data/必修1.js"></script>
+<script src="data/必修2.js"></script>
+<script src="data/选择性必修1.js"></script>
+<script src="data/选择性必修2.js"></script>
+<script src="data/选择性必修3.js"></script>
+<script>window.CHEM_DATA.__books = ["必修1","必修2","选择性必修1","选择性必修2","选择性必修3"].map(function(b){return window.CHEM_DATA[b];});</script>
+<script src="vendor/katex.min.js"></script>
+<script src="vendor/three.min.js"></script>
+<script src="vendor/OrbitControls.js"></script>
+<script src="vendor/katex-auto-render.min.js"></script>
+<script src="vendor/tailwind.min.js"></script>
+<script src="player.js"></script>
+<script>
+/* ============ 单页外壳：册 -> 章 -> 方程 三级导航 ============ */
+(function () {
+    'use strict';
+
+    var BOOKS = [];      // [{book, chapters:[{title, reactions:[]}]}]
+    var curBook = 0, curChap = 0, player = null;
+
+    // ---------- 工具 ----------
+    function $(id) { return document.getElementById(id); }
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+        });
+    }
+    // 把 LaTeX/Unicode 方程转成可搜索的纯文本
+    function plainEq(s) {
+        return String(s || '')
+            .replace(/\\mathrm\s*\{/g, ' ').replace(/\\text\s*\{/g, ' ')
+            .replace(/\\[a-zA-Z]+/g, ' ')
+            .replace(/[_^{}&]/g, ' ')
+            .replace(/\s+/g, ' ').trim();
+    }
+
+    // ---------- 构建导航 ----------
+    function buildBookRow() {
+        var row = $('book-row');
+        row.innerHTML = '';
+        BOOKS.forEach(function (b, i) {
+            var n = b.chapters.reduce(function (s, c) { return s + c.reactions.length; }, 0);
+            var el = document.createElement('button');
+            el.className = 'tab-btn px-4 py-2 rounded-xl text-sm font-semibold border transition-colors cursor-pointer whitespace-nowrap ' +
+                (i === curBook ? 'tab-active' : 'tab-idle');
+            el.textContent = b.book + '（' + n + '）';
+            el.onclick = function () { selectBook(i); };
+            row.appendChild(el);
+        });
+    }
+
+    function buildChapterRow() {
+        var row = $('chapter-row');
+        row.innerHTML = '';
+        var book = BOOKS[curBook];
+        if (!book) return;
+        book.chapters.forEach(function (c, i) {
+            var el = document.createElement('button');
+            el.className = 'chap-btn px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer whitespace-nowrap ' +
+                (i === curChap ? 'chap-active' : 'chap-idle');
+            el.textContent = c.title + '（' + c.reactions.length + '）';
+            el.onclick = function () { selectChapter(i); };
+            row.appendChild(el);
+        });
+    }
+
+    // ---------- 切换 ----------
+    function selectBook(i) {
+        if (i === curBook) return;
+        curBook = i; curChap = 0;
+        buildBookRow(); buildChapterRow(); mount();
+        saveHash();
+    }
+
+    function selectChapter(i) {
+        if (i === curChap) return;
+        curChap = i;
+        buildChapterRow(); mount();
+        saveHash();
+    }
+
+    // 挂载当前章节的播放器
+    function mount(eqIdx) {
+        var book = BOOKS[curBook];
+        if (!book) return;
+        var chap = book.chapters[curChap];
+        if (!chap || !chap.reactions.length) return;
+
+        if (player) { try { player.destroy(); } catch (e) {} player = null; }
+        // 清掉上一次的残留 DOM
+        $('card-row').innerHTML = '';
+        $('stepper').innerHTML = '';
+        $('conservation-chips').innerHTML = '';
+        $('legend-grid').innerHTML = '';
+        $('labels-overlay').innerHTML = '';
+
+        player = window.ChemPlayer.create(chap.reactions);
+        player.start();
+        if (typeof eqIdx === 'number' && eqIdx > 0) player.switchReaction(eqIdx);
+
+        // 面包屑
+        $('page-title').textContent = book.book + ' · ' + chap.title;
+        $('eq-count').textContent = '第 ' + (curChap + 1) + '/' + book.chapters.length + ' 章 · 共 ' + chap.reactions.length + ' 个反应';
+        document.title = book.book + ' · ' + chap.title + ' · 微观 3D 可视化';
+    }
+
+    // ---------- 搜索 ----------
+    function allReactions() {
+        var out = [];
+        BOOKS.forEach(function (b, bi) {
+            b.chapters.forEach(function (c, ci) {
+                c.reactions.forEach(function (r, ri) {
+                    out.push({ bi: bi, ci: ci, ri: ri, r: r, book: b.book, chap: c.title });
+                });
+            });
+        });
+        return out;
+    }
+
+    function runSearch(q) {
+        var box = $('search-results');
+        q = (q || '').trim().toLowerCase();
+        if (!q) { box.innerHTML = '<div class="p-6 text-center text-xs text-slate-400">输入关键字搜索，如「氯气」「电解」「置换」</div>'; return; }
+
+        var hits = allReactions().filter(function (it) {
+            var r = it.r;
+            var hay = [
+                plainEq(r.meta && r.meta.equation), r.card,
+                (r.labels || []).map(function (l) { return l.text; }).join(' '),
+                it.book, it.chap
+            ].join(' ').toLowerCase();
+            return hay.indexOf(q) >= 0;
+        }).slice(0, 80);
+
+        if (!hits.length) { box.innerHTML = '<div class="p-6 text-center text-xs text-slate-400">没有匹配的方程</div>'; return; }
+
+        box.innerHTML = hits.map(function (it) {
+            return '<button class="w-full text-left px-4 py-2.5 hover:bg-slate-50 transition-colors cursor-pointer" data-bi="' + it.bi + '" data-ci="' + it.ci + '" data-ri="' + it.ri + '">' +
+                '<div class="text-[10px] text-slate-400 mb-0.5">' + esc(it.book) + ' · ' + esc(it.chap) + '</div>' +
+                '<div class="text-sm text-slate-700 font-medium">' + esc(it.r.card || plainEq(it.r.meta && it.r.meta.equation)) + '</div>' +
+                '</button>';
+        }).join('');
+
+        box.querySelectorAll('button').forEach(function (b) {
+            b.onclick = function () {
+                curBook = +b.dataset.bi; curChap = +b.dataset.ci;
+                buildBookRow(); buildChapterRow(); mount(+b.dataset.ri);
+                saveHash(); closeSearch();
+            };
+        });
+    }
+
+    function openSearch() {
+        $('search-overlay').classList.remove('hidden');
+        $('search-input-2').value = $('search-input').value || '';
+        $('search-input-2').focus();
+        runSearch($('search-input-2').value);
+    }
+    function closeSearch() { $('search-overlay').classList.add('hidden'); }
+
+    // 当前章节的方程数
+    function curCount() {
+        var b = BOOKS[curBook];
+        if (!b) return 0;
+        var c = b.chapters[curChap];
+        return c ? c.reactions.length : 0;
+    }
+
+    // ---------- 深链：#册/章/方程 ----------
+    function saveHash() {
+        var eq = player ? player.index : 0;
+        try { history.replaceState(null, '', '#' + curBook + '/' + curChap + '/' + eq); } catch (e) {}
+    }
+    function loadHash() {
+        var m = (location.hash || '').replace(/^#/, '').split('/');
+        if (m.length === 3) {
+            var b = +m[0], c = +m[1], r = +m[2];
+            if (BOOKS[b] && BOOKS[b].chapters[c]) { curBook = b; curChap = c; return r || 0; }
+        }
+        return 0;
+    }
+
+    // ---------- 启动 ----------
+    function boot() {
+        BOOKS = (window.CHEM_DATA && window.CHEM_DATA.__books) || [];
+        if (!BOOKS.length) {
+            document.body.innerHTML = '<div class="p-10 text-sm text-slate-500">数据未加载：请确认数据脚本已包含。</div>';
+            return;
+        }
+        var total = BOOKS.reduce(function (s, b) {
+            return s + b.chapters.reduce(function (t, c) { return t + c.reactions.length; }, 0);
+        }, 0);
+        var chaps = BOOKS.reduce(function (s, b) { return s + b.chapters.length; }, 0);
+        $('global-count').textContent = BOOKS.length + ' 册 · ' + chaps + ' 章 · ' + total + ' 个方程';
+
+        var eqIdx = loadHash();
+        buildBookRow(); buildChapterRow(); mount(eqIdx);
+
+        // 卡片切换时同步 URL
+        var row = $('card-row');
+        row.addEventListener('click', function () { setTimeout(saveHash, 0); }, true);
+
+        // 搜索
+        $('search-input').addEventListener('focus', openSearch);
+        $('search-input-2').addEventListener('input', function (e) { runSearch(e.target.value); });
+        $('search-close').onclick = closeSearch;
+        $('search-overlay').addEventListener('click', function (e) { if (e.target === $('search-overlay')) closeSearch(); });
+
+        // 选择栏（分册 / 章节 / 方程卡片 三行）整体收起，状态记在本地
+        var navBox = $('nav-collapse'), collapsed = false;
+        try { collapsed = localStorage.getItem('chem.nav.collapsed') === '1'; } catch (e) {}
+        function applyCollapse() {
+            navBox.classList.toggle('hidden', collapsed);
+            $('collapse-icon').style.transform = collapsed ? 'rotate(-90deg)' : '';
+            $('collapse-text').textContent = collapsed ? '展开' : '收起';
+            $('collapse-toggle').title = (collapsed ? '展开' : '收起') + ' 选择栏（快捷键 H）';
+            try { localStorage.setItem('chem.nav.collapsed', collapsed ? '1' : '0'); } catch (e) {}
+            // 视口高度变了，通知 3D 重算画布尺寸
+            setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 40);
+        }
+        $('collapse-toggle').onclick = function () { collapsed = !collapsed; applyCollapse(); };
+        applyCollapse();
+
+        // 键盘统一入口：Esc 关闭 / Ctrl+K 搜索 / H 收起选择栏 / ← → 切换方程
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') closeSearch();
+            if (e.key === 'k' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openSearch(); }
+            var ae = document.activeElement;
+            if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+            if (e.key === 'h' || e.key === 'H') { collapsed = !collapsed; applyCollapse(); return; }
+            if (!player || !$('search-overlay').classList.contains('hidden')) return;
+            if (e.key === 'ArrowRight') { player.switchReaction(Math.min(curCount() - 1, player.index + 1)); saveHash(); }
+            if (e.key === 'ArrowLeft') { player.switchReaction(Math.max(0, player.index - 1)); saveHash(); }
+        });
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+    else boot();
+})();
+</script>
+</body>
+</html>

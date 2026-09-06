@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>化学反应微观 3D 演示</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
+    <style>
+        :root { --accent: #6366f1; --accent-soft: rgba(99,102,241,0.25); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #e2e8f0; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .acc-text { color: var(--accent); }
+        .acc-bg { background: var(--accent); }
+        .acc-grad { background: linear-gradient(90deg, var(--accent-soft), var(--accent)); }
+        input[type=range].acc-range { accent-color: var(--accent); }
+        .acc-ring:focus { outline: none; box-shadow: 0 0 0 2px var(--accent); }
+        .play-btn { background: var(--accent); }
+        .play-btn:hover { filter: brightness(1.08); }
+
+        .card-active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .card-idle { background: #fff; color: #64748b; border-color: #e2e8f0; }
+        .card-idle:hover { border-color: var(--accent); color: var(--accent); }
+
+    </style>
+</head>
+<body class="bg-[#eef2f7] text-slate-900 min-h-screen flex flex-col overflow-hidden font-sans">
+<div class="shrink-0 bg-white border-b border-slate-200">
+        <div class="px-6 pt-4 pb-2 flex items-center justify-between">
+            <h1 class="text-base font-bold text-slate-900 tracking-wide" id="page-title">化学反应 3D 虚拟实验室</h1>
+            <span class="text-[11px] text-slate-400" id="eq-count"></span>
+        </div>
+        <div class="px-4 pb-3 overflow-x-auto" id="card-bar">
+            <div class="flex gap-2 min-w-max" id="card-row"></div>
+        </div>
+    </div>
+    <main class="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+
+        <!-- 3D Viewport -->
+        <div class="flex-1 relative bg-[#eef2f7] flex flex-col min-h-[45vh]">
+            <div id="labels-overlay" class="absolute inset-0 pointer-events-none z-20 overflow-hidden"></div>
+            <div id="canvas-container" class="flex-1 w-full h-full cursor-grab active:cursor-grabbing"></div>
+
+            <!-- Labels show / hide toggle -->
+            <button id="labels-toggle" class="absolute top-4 left-4 z-30 bg-white/85 border border-slate-200 backdrop-blur text-xs pl-2.5 pr-3 py-1.5 rounded-lg text-slate-600 shadow-sm hover:bg-white transition-colors flex items-center gap-1.5 cursor-pointer select-none" title="显示 / 隐藏标签">
+                <svg id="labels-toggle-icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                <span id="labels-toggle-text">标签</span>
+            </button>
+
+            <!-- Energy diagram (optional) -->
+            <div id="energy-panel" class="absolute top-4 right-4 hidden bg-white/85 border border-slate-200 backdrop-blur rounded-xl p-3 select-none shadow-sm">
+                <div class="text-[10px] font-bold text-slate-500 tracking-wider uppercase mb-1" id="energy-title">能量·反应进程</div>
+                <canvas id="energy-canvas" width="200" height="110"></canvas>
+            </div>
+
+            <div class="absolute bottom-4 left-4 bg-white/85 border border-slate-200 backdrop-blur text-xs px-3 py-2 rounded-lg text-slate-500 select-none shadow-sm">
+                <div class="flex items-center space-x-1.5">
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
+                    <span id="drag-hint">拖拽旋转 · 滚轮缩放 · 右键平移</span>
+                </div>
+            </div>
+            <div class="absolute bottom-0 left-0 right-0 h-1 bg-slate-200">
+                <div id="viewport-progress" class="h-full acc-grad" style="width:0%"></div>
+            </div>
+        </div>
+
+        <!-- Right panel -->
+        <div class="w-full lg:w-[480px] shrink-0 bg-white border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col overflow-y-auto">
+
+            <div class="p-6 border-b border-slate-200 bg-slate-50">
+                <h1 id="title" class="text-lg font-bold tracking-wide text-slate-900">化学反应 3D 虚拟实验室</h1>
+                <p id="subtitle" class="text-xs acc-text mt-1"></p>
+                <div id="equation-container" class="bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 mt-4 text-sm overflow-x-auto"></div>
+            </div>
+
+            <!-- Stepper -->
+            <div class="p-6 border-b border-slate-200 bg-slate-50">
+                <div class="relative">
+                    <div class="absolute top-4 left-5 right-5 h-0.5 bg-slate-200">
+                        <div id="step-progress-line" class="h-full acc-bg transition-all duration-300" style="width:0%"></div>
+                    </div>
+                    <div id="stepper" class="relative flex justify-between"></div>
+                </div>
+
+                <div class="mt-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <span id="progress-label" class="text-[11px] font-bold text-slate-500 tracking-wider uppercase">反应进度</span>
+                        <span id="progress-readout" class="text-xs font-mono font-bold acc-text tabular-nums">0%</span>
+                    </div>
+                    <input type="range" id="reaction-slider" min="0" max="100" value="0" class="acc-range acc-ring w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                    <p id="slider-hint" class="text-[11px] text-slate-400 mt-2 leading-relaxed"></p>
+                </div>
+
+                <div class="flex items-center gap-2 mt-4">
+                    <button id="prev-btn" class="p-2.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-slate-600 transition-colors cursor-pointer" title="上一步">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                    </button>
+                    <button id="play-btn" class="play-btn flex-1 px-4 py-2.5 text-white rounded-lg flex items-center justify-center space-x-1.5 transition-colors shadow-lg cursor-pointer">
+                        <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        <span id="play-text">自动演示</span>
+                    </button>
+                    <button id="next-btn" class="p-2.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-slate-600 transition-colors cursor-pointer" title="下一步">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </button>
+                    <button id="reset-btn" class="p-2.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg transition-colors cursor-pointer" title="复位">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-6 flex-1 space-y-4">
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <h2 class="text-base font-bold text-slate-900 mb-3 flex items-center gap-2">
+                        <svg class="w-4 h-4 acc-text shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        <span id="step-title-text">—</span>
+                    </h2>
+                    <p id="explanation-text" class="text-sm text-slate-700 leading-relaxed min-h-[140px]">加载中...</p>
+                </div>
+
+                <!-- Conservation counter -->
+                <div id="conservation-panel" class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[11px] font-bold text-slate-500 tracking-wider uppercase" id="conservation-label">原子守恒</span>
+                        <span class="text-[10px] text-emerald-600" id="conservation-note">反应前后不变</span>
+                    </div>
+                    <div id="conservation-chips" class="flex flex-wrap gap-2 mt-3"></div>
+                </div>
+
+                <!-- Overlay toggles (flame / catalyst) -->
+                <div id="toggle-flame" class="hidden p-4 rounded-xl bg-amber-50 border border-amber-200 items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12.963 2.286a.75.75 0 00-1.071-.136 9.742 9.742 0 00-3.539 6.177 7.547 7.547 0 01-1.705-1.715.75.75 0 00-1.152-.082A9 9 0 1015.68 4.534a7.46 7.46 0 01-2.717-2.248z"/></svg>
+                        </div>
+                        <div><h4 class="text-sm font-bold text-slate-800" id="flame-title">燃烧火焰与高温</h4>
+                             <p class="text-xs text-amber-700" id="flame-sub">显示反应放出的热与光</p></div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input type="checkbox" id="flame-toggle" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-300 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
+                </div>
+
+                <div id="toggle-catalyst" class="hidden p-4 rounded-xl bg-slate-100 border border-slate-200 items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style="background: var(--accent-soft); color: var(--accent)">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        </div>
+                        <div><h4 class="text-sm font-bold text-slate-800" id="catalyst-title">催化剂</h4>
+                             <p class="text-xs acc-text" id="catalyst-sub">显示催化剂如何参与反应</p></div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input type="checkbox" id="catalyst-toggle" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-300 rounded-full peer peer-checked:bg-[color:var(--accent)] peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                    </label>
+                </div>
+
+                <!-- Atom legend -->
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <span class="text-[11px] font-bold text-slate-500 tracking-wider uppercase" id="legend-label">原子图例</span>
+                    <div id="legend-grid" class="grid grid-cols-2 gap-2.5 mt-3 text-xs"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+    const ALL = [{"meta": {"title": "选择性必修3.md · 第一节 & 第二节（聚合反应）", "subtitle": "选择性必修3.md · 第一节 & 第二节（聚合反应）（聚合示意）", "language": "zh-CN", "category": "organic", "accent": "emerald", "engine": "morph", "equation": "\\mathrm{2CH_2=CH-CH=CH_2 \\xlongequal{催化剂} [-CH_2-CH=CH-CH_2-]_n}", "pageTitle": "选择性必修3 · 第五章 合成高分子"}, "conditions": {"text": "催化剂"}, "atoms": [{"id": "C1", "el": "C", "color": "#334155", "radius": 0.5, "start": [0.1155, -0.8411, -0.0747], "end": [-3.6825, -0.021, -0.0665], "rmol": "CH_2=CH-CH=CH_2#1", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "C2", "el": "C", "color": "#334155", "radius": 0.5, "start": [-1.0777, -0.3184, 0.2306], "end": [-2.3841, 0.0204, -0.3935], "rmol": "CH_2=CH-CH=CH_2#1", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "C3", "el": "C", "color": "#334155", "radius": 0.5, "start": [-2.3223, -0.8816, -0.2306], "end": [-1.2822, -0.5869, 0.4248], "rmol": "CH_2=CH-CH=CH_2#1", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "C4", "el": "C", "color": "#334155", "radius": 0.5, "start": [-3.5155, -0.3589, 0.0747], "end": [-0.583, -1.6756, -0.337], "rmol": "CH_2=CH-CH=CH_2#1", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "C5", "el": "C", "color": "#334155", "radius": 0.5, "start": [3.5155, 0.3589, -0.0747], "end": [0.6714, -1.6606, -0.8201], "rmol": "CH_2=CH-CH=CH_2#2", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "C6", "el": "C", "color": "#334155", "radius": 0.5, "start": [2.3223, 0.8816, 0.2306], "end": [1.6585, -0.5308, -0.7602], "rmol": "CH_2=CH-CH=CH_2#2", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "C7", "el": "C", "color": "#334155", "radius": 0.5, "start": [1.0777, 0.3184, -0.2306], "end": [2.7466, -0.8112, 0.2345], "rmol": "CH_2=CH-CH=CH_2#2", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "C8", "el": "C", "color": "#334155", "radius": 0.5, "start": [-0.1155, 0.8411, 0.0747], "end": [2.9857, -0.0654, 1.3213], "rmol": "CH_2=CH-CH=CH_2#2", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "H1", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [1.0276, -0.3833, 0.295], "end": [-4.4297, 0.4426, -0.7033], "rmol": "CH_2=CH-CH=CH_2#1", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "H2", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [0.2177, -1.7273, -0.6927], "end": [-4.0289, -0.5162, 0.8352], "rmol": "CH_2=CH-CH=CH_2#1", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "H3", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-1.1213, 0.5719, 0.8546], "end": [-2.0867, 0.5317, -1.307], "rmol": "CH_2=CH-CH=CH_2#1", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "H4", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-2.2787, -1.7719, -0.8546], "end": [-0.5937, 0.2066, 0.7312], "rmol": "CH_2=CH-CH=CH_2#1", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "H5", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-4.4276, -0.8167, -0.295], "end": [-1.6778, -1.0177, 1.3529], "rmol": "CH_2=CH-CH=CH_2#1", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "H6", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-3.6177, 0.5273, 0.6927], "end": [-1.1703, -2.5816, -0.4844], "rmol": "CH_2=CH-CH=CH_2#1", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "H7", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [4.4276, 0.8167, 0.295], "end": [1.0238, -2.5555, -1.3319], "rmol": "CH_2=CH-CH=CH_2#2", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "H8", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [3.6177, -0.5273, -0.6927], "end": [1.1664, 0.4237, -0.5463], "rmol": "CH_2=CH-CH=CH_2#2", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "H9", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [2.2787, 1.7719, 0.8546], "end": [2.1119, -0.414, -1.7521], "rmol": "CH_2=CH-CH=CH_2#2", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "H10", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [1.1213, -0.5719, -0.8546], "end": [3.3787, -1.6754, 0.0412], "rmol": "CH_2=CH-CH=CH_2#2", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "H11", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-1.0276, 0.3833, -0.295], "end": [2.3843, 0.8067, 1.5583], "rmol": "CH_2=CH-CH=CH_2#2", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}, {"id": "H12", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-0.2177, 1.7273, 0.6927], "end": [3.7914, -0.32, 2.0029], "rmol": "CH_2=CH-CH=CH_2#2", "pmol": "[-CH_2-CH=CH-CH_2-]_n#1"}], "bonds": {"before": [{"a": "C1", "b": "C2", "order": 2}, {"a": "C2", "b": "C3", "order": 1}, {"a": "C3", "b": "C4", "order": 2}, {"a": "C1", "b": "H1", "order": 1}, {"a": "C1", "b": "H2", "order": 1}, {"a": "C2", "b": "H3", "order": 1}, {"a": "C3", "b": "H4", "order": 1}, {"a": "C4", "b": "H5", "order": 1}, {"a": "C4", "b": "H6", "order": 1}, {"a": "C5", "b": "C6", "order": 2}, {"a": "C6", "b": "C7", "order": 1}, {"a": "C7", "b": "C8", "order": 2}, {"a": "C5", "b": "H7", "order": 1}, {"a": "C5", "b": "H8", "order": 1}, {"a": "C6", "b": "H9", "order": 1}, {"a": "C7", "b": "H10", "order": 1}, {"a": "C8", "b": "H11", "order": 1}, {"a": "C8", "b": "H12", "order": 1}], "after": [{"a": "C8", "b": "C7", "order": 2}, {"a": "C7", "b": "C6", "order": 1}, {"a": "C6", "b": "C5", "order": 1}, {"a": "C5", "b": "C4", "order": 2}, {"a": "C4", "b": "C3", "order": 1}, {"a": "C3", "b": "C2", "order": 1}, {"a": "C2", "b": "C1", "order": 2}, {"a": "C8", "b": "H12", "order": 1}, {"a": "C8", "b": "H11", "order": 1}, {"a": "C7", "b": "H10", "order": 1}, {"a": "C6", "b": "H9", "order": 1}, {"a": "C6", "b": "H8", "order": 1}, {"a": "C5", "b": "H7", "order": 1}, {"a": "C4", "b": "H6", "order": 1}, {"a": "C3", "b": "H5", "order": 1}, {"a": "C3", "b": "H4", "order": 1}, {"a": "C2", "b": "H3", "order": 1}, {"a": "C1", "b": "H2", "order": 1}, {"a": "C1", "b": "H1", "order": 1}], "broken": [{"a": "C3", "b": "C4", "order": 2}, {"a": "C4", "b": "H5", "order": 1}, {"a": "C5", "b": "C6", "order": 2}, {"a": "C5", "b": "H8", "order": 1}], "formed": [{"a": "C6", "b": "C5", "order": 1}, {"a": "C5", "b": "C4", "order": 2}, {"a": "C4", "b": "C3", "order": 1}, {"a": "C6", "b": "H8", "order": 1}, {"a": "C3", "b": "H5", "order": 1}], "kept": [{"a": "C8", "b": "C7", "order": 2}, {"a": "C7", "b": "C6", "order": 1}, {"a": "C3", "b": "C2", "order": 1}, {"a": "C2", "b": "C1", "order": 2}, {"a": "C8", "b": "H12", "order": 1}, {"a": "C8", "b": "H11", "order": 1}, {"a": "C7", "b": "H10", "order": 1}, {"a": "C6", "b": "H9", "order": 1}, {"a": "C5", "b": "H7", "order": 1}, {"a": "C4", "b": "H6", "order": 1}, {"a": "C3", "b": "H4", "order": 1}, {"a": "C2", "b": "H3", "order": 1}, {"a": "C1", "b": "H2", "order": 1}, {"a": "C1", "b": "H1", "order": 1}]}, "labels": [{"id": "reactant-CH_2=CH-CH=CH_2#1", "text": "1,3-丁二烯 (CH_2=CH-CH=CH_2)", "color": "slate", "phase": "reactant", "atoms": ["C1", "C2", "C3", "C4", "H1", "H2", "H3", "H4", "H5", "H6"]}, {"id": "reactant-CH_2=CH-CH=CH_2#2", "text": "1,3-丁二烯 (CH_2=CH-CH=CH_2)", "color": "slate", "phase": "reactant", "atoms": ["C5", "C6", "C7", "C8", "H7", "H8", "H9", "H10", "H11", "H12"]}, {"id": "product-[-CH_2-CH=CH-CH_2-]_n#1", "text": "聚丁二烯(二单元示意) ([-CH_2-CH=CH-CH_2-]_n)", "color": "slate", "phase": "product", "atoms": ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8", "H9", "H10", "H11", "H12"]}], "elementCounts": {"C": 8, "H": 12}, "legend": [{"el": "C", "color": "#334155", "name": "碳"}, {"el": "H", "color": "#f1f5f9", "name": "氢"}], "steps": [{"title": "反应物靠近", "html": "<span class='text-slate-700 font-semibold'>CH₂=CH-CH=CH₂</span> 分子相互靠近。此时分子内原子保持原有连接，体系能量尚未发生变化。"}, {"title": "催化剂，旧键断裂", "html": "在<b>催化剂</b>条件下，反应物分子内的<b>化学键断裂</b>（动画中橙色虚线的键），原子被打散，处于不稳定的过渡状态，随即开始重新组合。"}, {"title": "生成产物", "html": "原子重新组合生成 <span class='text-emerald-700 font-semibold'>[-CH₂-CH=CH-CH₂-]ₙ</span>，新键形成（绿色虚线的键）。反应前后原子种类与数目不变，符合<b>质量守恒</b>。<p class='text-amber-700 text-xs mt-2'>注：加聚反应示意：以 2 个单体展示双键断裂、首尾相连成链的过程；实际产物为 n 个单体聚合的高分子链。</p>"}], "fragments": [], "energy": null, "electrons": [], "ui": {"reactants": "反应物", "products": "产物", "progress": "反应进度", "play": "自动演示", "pause": "暂停演示", "reset": "复位", "prev": "上一步", "next": "下一步", "hint": "拖动滑块观察化学键的断裂、原子重组与守恒，或点击上方步骤跳转。", "drag": "拖拽旋转 · 滚轮缩放 · 右键平移", "legend": "原子图例", "conservation": "原子守恒", "energy": "能量·反应进程", "broken": "断裂的键", "formed": "新生成的键", "labels": "标签", "labelsHint": "显示 / 隐藏分子标签"}, "card": "第一节&第二节 聚合反应 · 1,3-丁二烯聚合（制顺丁橡胶）"}, {"meta": {"title": "选择性必修3.md · 第一节 & 第二节（聚合反应）", "subtitle": "选择性必修3.md · 第一节 & 第二节（聚合反应）（聚合示意）", "language": "zh-CN", "category": "organic", "accent": "emerald", "engine": "morph", "equation": "\\mathrm{HOOC-(CH_2)_4-COOH + HOCH_2CH_2OH \\xlongequal{\\Delta} HOOC-(CH_2)_4-COOCH_2CH_2OH + H_2O}", "pageTitle": "选择性必修3 · 第五章 合成高分子"}, "conditions": {"text": "Δ"}, "atoms": [{"id": "O1", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-5.5262, 0.0298, 1.2915], "end": [-7.4995, -0.6862, -0.0393], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "O2", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-4.4786, 1.1032, -0.3583], "end": [-3.9176, -0.3634, -0.7591], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "O3", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [0.8824, 0.2905, 0.7997], "end": [-2.7297, 0.387, 1.0542], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "O4", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [1.9192, 0.118, -1.1668], "end": [2.6022, -1.5194, -0.8933], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "O5", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-0.0881, 0.9156, -0.3307], "end": [3.7953, -0.83, 0.8595], "rmol": "HOCH_2CH_2OH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "C1", "el": "C", "color": "#334155", "radius": 0.5, "start": [-4.4807, 0.1981, 0.4577], "end": [-6.2925, -0.752, -0.7872], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "C2", "el": "C", "color": "#334155", "radius": 0.5, "start": [-3.4175, -0.8442, 0.6755], "end": [-5.1059, -0.2611, 0.0335], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "C3", "el": "C", "color": "#334155", "radius": 0.5, "start": [-2.1807, -0.575, -0.1803], "end": [-2.7789, 0.0047, -0.1058], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "C4", "el": "C", "color": "#334155", "radius": 0.5, "start": [-1.112, -1.6511, 0.032], "end": [-1.5996, -0.1136, -1.0441], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "C5", "el": "C", "color": "#334155", "radius": 0.5, "start": [0.1419, -1.401, -0.8058], "end": [-0.2517, 0.0482, -0.3401], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "C6", "el": "C", "color": "#334155", "radius": 0.5, "start": [0.9734, -0.2591, -0.2842], "end": [0.1109, -1.1712, 0.5181], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "C7", "el": "C", "color": "#334155", "radius": 0.5, "start": [1.1718, 0.2752, -0.4757], "end": [1.4638, -1.0135, 1.2134], "rmol": "HOCH_2CH_2OH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "C8", "el": "C", "color": "#334155", "radius": 0.5, "start": [2.284, 1.0871, 0.1805], "end": [2.6278, -1.1508, 0.2681], "rmol": "HOCH_2CH_2OH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "H1", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-6.1381, 0.7575, 1.0533], "end": [-7.422, -1.3099, 0.7034], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "H2", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-3.8425, -1.8221, 0.4241], "end": [-6.4092, -0.1397, -1.6876], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "H3", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-3.1403, -0.8364, 1.7355], "end": [-6.1364, -1.783, -1.1228], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "H4", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-1.7781, 0.4151, 0.0649], "end": [-5.2694, 0.7808, 0.334], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "H5", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-2.4642, -0.5439, -1.2398], "end": [-5.0094, -0.8701, 0.9407], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "H6", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-0.8509, -1.7118, 1.0955], "end": [-1.641, -1.085, -1.5494], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "H7", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-1.5302, -2.6252, -0.2502], "end": [-1.7051, 0.6762, -1.7966], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "H8", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-0.1381, -1.1949, -1.8447], "end": [-0.2564, 0.951, 0.2826], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "H9", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [0.7722, -2.297, -0.7856], "end": [0.5175, 0.1957, -1.1068], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "H10", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [2.389, 0.8495, -0.7139], "end": [-0.6546, -1.3144, 1.2893], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "H11", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-0.2925, 0.9612, 0.6189], "end": [0.109, -2.0751, -0.1032], "rmol": "HOCH_2CH_2OH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "H12", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [1.3771, 0.1466, -1.5435], "end": [1.5679, -1.7977, 1.9717], "rmol": "HOCH_2CH_2OH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "H13", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [1.1121, -0.7282, -0.0405], "end": [1.5194, -0.0382, 1.7091], "rmol": "HOCH_2CH_2OH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "H14", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [2.0619, 1.2707, 1.2372], "end": [4.4653, -0.9691, 0.1578], "rmol": "HOCH_2CH_2OH#1", "pmol": "HOOC-(CH_2)_4-COOCH_2CH_2OH#1"}, {"id": "O6", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [3.5351, 0.421, 0.0821], "end": [1.7, 0.6, 0.0], "rmol": "HOCH_2CH_2OH#1", "pmol": "H2O#1"}, {"id": "H15", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [2.3713, 2.0667, -0.3007], "end": [0.9409, 1.1877, 0.0], "rmol": "HOCH_2CH_2OH#1", "pmol": "H2O#1"}, {"id": "H16", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [3.4674, -0.4159, 0.5726], "end": [2.4591, 1.1877, 0.0], "rmol": "HOCH_2CH_2OH#1", "pmol": "H2O#1"}], "bonds": {"before": [{"a": "O1", "b": "C1", "order": 1}, {"a": "C1", "b": "O2", "order": 2}, {"a": "C1", "b": "C2", "order": 1}, {"a": "C2", "b": "C3", "order": 1}, {"a": "C3", "b": "C4", "order": 1}, {"a": "C4", "b": "C5", "order": 1}, {"a": "C5", "b": "C6", "order": 1}, {"a": "C6", "b": "O3", "order": 2}, {"a": "C6", "b": "O4", "order": 1}, {"a": "O1", "b": "H1", "order": 1}, {"a": "C2", "b": "H2", "order": 1}, {"a": "C2", "b": "H3", "order": 1}, {"a": "C3", "b": "H4", "order": 1}, {"a": "C3", "b": "H5", "order": 1}, {"a": "C4", "b": "H6", "order": 1}, {"a": "C4", "b": "H7", "order": 1}, {"a": "C5", "b": "H8", "order": 1}, {"a": "C5", "b": "H9", "order": 1}, {"a": "O4", "b": "H10", "order": 1}, {"a": "O5", "b": "C7", "order": 1}, {"a": "C7", "b": "C8", "order": 1}, {"a": "C8", "b": "O6", "order": 1}, {"a": "O5", "b": "H11", "order": 1}, {"a": "C7", "b": "H12", "order": 1}, {"a": "C7", "b": "H13", "order": 1}, {"a": "C8", "b": "H14", "order": 1}, {"a": "C8", "b": "H15", "order": 1}, {"a": "O6", "b": "H16", "order": 1}], "after": [{"a": "O5", "b": "C8", "order": 1}, {"a": "C8", "b": "O4", "order": 2}, {"a": "C8", "b": "C7", "order": 1}, {"a": "C7", "b": "C6", "order": 1}, {"a": "C6", "b": "C5", "order": 1}, {"a": "C5", "b": "C4", "order": 1}, {"a": "C4", "b": "C3", "order": 1}, {"a": "C3", "b": "O3", "order": 2}, {"a": "C3", "b": "O2", "order": 1}, {"a": "O2", "b": "C2", "order": 1}, {"a": "C2", "b": "C1", "order": 1}, {"a": "C1", "b": "O1", "order": 1}, {"a": "O5", "b": "H14", "order": 1}, {"a": "C7", "b": "H13", "order": 1}, {"a": "C7", "b": "H12", "order": 1}, {"a": "C6", "b": "H11", "order": 1}, {"a": "C6", "b": "H10", "order": 1}, {"a": "C5", "b": "H9", "order": 1}, {"a": "C5", "b": "H8", "order": 1}, {"a": "C4", "b": "H7", "order": 1}, {"a": "C4", "b": "H6", "order": 1}, {"a": "C2", "b": "H5", "order": 1}, {"a": "C2", "b": "H4", "order": 1}, {"a": "C1", "b": "H3", "order": 1}, {"a": "C1", "b": "H2", "order": 1}, {"a": "O1", "b": "H1", "order": 1}, {"a": "O6", "b": "H16", "order": 1}, {"a": "O6", "b": "H15", "order": 1}], "broken": [{"a": "C1", "b": "O2", "order": 2}, {"a": "C2", "b": "C3", "order": 1}, {"a": "C6", "b": "O3", "order": 2}, {"a": "C6", "b": "O4", "order": 1}, {"a": "C2", "b": "H2", "order": 1}, {"a": "C2", "b": "H3", "order": 1}, {"a": "C3", "b": "H4", "order": 1}, {"a": "C3", "b": "H5", "order": 1}, {"a": "O4", "b": "H10", "order": 1}, {"a": "O5", "b": "C7", "order": 1}, {"a": "C8", "b": "O6", "order": 1}, {"a": "O5", "b": "H11", "order": 1}, {"a": "C8", "b": "H14", "order": 1}, {"a": "C8", "b": "H15", "order": 1}], "formed": [{"a": "O5", "b": "C8", "order": 1}, {"a": "C8", "b": "O4", "order": 2}, {"a": "C7", "b": "C6", "order": 1}, {"a": "C3", "b": "O3", "order": 2}, {"a": "C3", "b": "O2", "order": 1}, {"a": "O2", "b": "C2", "order": 1}, {"a": "O5", "b": "H14", "order": 1}, {"a": "C6", "b": "H11", "order": 1}, {"a": "C6", "b": "H10", "order": 1}, {"a": "C2", "b": "H5", "order": 1}, {"a": "C2", "b": "H4", "order": 1}, {"a": "C1", "b": "H3", "order": 1}, {"a": "C1", "b": "H2", "order": 1}, {"a": "O6", "b": "H15", "order": 1}], "kept": [{"a": "C8", "b": "C7", "order": 1}, {"a": "C6", "b": "C5", "order": 1}, {"a": "C5", "b": "C4", "order": 1}, {"a": "C4", "b": "C3", "order": 1}, {"a": "C2", "b": "C1", "order": 1}, {"a": "C1", "b": "O1", "order": 1}, {"a": "C7", "b": "H13", "order": 1}, {"a": "C7", "b": "H12", "order": 1}, {"a": "C5", "b": "H9", "order": 1}, {"a": "C5", "b": "H8", "order": 1}, {"a": "C4", "b": "H7", "order": 1}, {"a": "C4", "b": "H6", "order": 1}, {"a": "O1", "b": "H1", "order": 1}, {"a": "O6", "b": "H16", "order": 1}]}, "labels": [{"id": "reactant-HOOC-(CH_2)_4-COOH#1", "text": "己二酸 (HOOC-(CH_2)_4-COOH)", "color": "slate", "phase": "reactant", "atoms": ["O1", "O2", "O3", "O4", "C1", "C2", "C3", "C4", "C5", "C6", "H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8", "H9", "H10"]}, {"id": "reactant-HOCH_2CH_2OH#1", "text": "乙二醇 (HOCH_2CH_2OH)", "color": "slate", "phase": "reactant", "atoms": ["O5", "C7", "C8", "H11", "H12", "H13", "H14", "O6", "H15", "H16"]}, {"id": "product-HOOC-(CH_2)_4-COOCH_2CH_2OH#1", "text": "单酯(己二酸单乙二醇酯示意) (HOOC-(CH_2)_4-COOCH_2CH_2OH)", "color": "slate", "phase": "product", "atoms": ["O1", "O2", "O3", "O4", "O5", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8", "H9", "H10", "H11", "H12", "H13", "H14"]}, {"id": "product-H2O#1", "text": "水 (H₂O)", "color": "cyan", "phase": "product", "atoms": ["O6", "H15", "H16"]}], "elementCounts": {"O": 6, "C": 8, "H": 16}, "legend": [{"el": "O", "color": "#ef4444", "name": "氧"}, {"el": "C", "color": "#334155", "name": "碳"}, {"el": "H", "color": "#f1f5f9", "name": "氢"}], "steps": [{"title": "反应物靠近", "html": "<span class='text-slate-700 font-semibold'>HOOC-(CH₂)₄-COOH、HOCH₂CH₂OH</span> 分子相互靠近。此时分子内原子保持原有连接，体系能量尚未发生变化。"}, {"title": "Δ，旧键断裂", "html": "在<b>Δ</b>条件下，反应物分子内的<b>化学键断裂</b>（动画中橙色虚线的键），原子被打散，处于不稳定的过渡状态，随即开始重新组合。"}, {"title": "生成产物", "html": "原子重新组合生成 <span class='text-emerald-700 font-semibold'>HOOC-(CH₂)₄-COOCH₂CH₂OH、H₂O</span>，新键形成（绿色虚线的键）。反应前后原子种类与数目不变，符合<b>质量守恒</b>。<p class='text-amber-700 text-xs mt-2'>注：缩聚反应示意：以 1 个单元展示官能团间脱去小分子（水）生成高分子的过程；实际为 n 个单体逐步缩聚。</p>"}], "fragments": [], "energy": null, "electrons": [], "ui": {"reactants": "反应物", "products": "产物", "progress": "反应进度", "play": "自动演示", "pause": "暂停演示", "reset": "复位", "prev": "上一步", "next": "下一步", "hint": "拖动滑块观察化学键的断裂、原子重组与守恒，或点击上方步骤跳转。", "drag": "拖拽旋转 · 滚轮缩放 · 右键平移", "legend": "原子图例", "conservation": "原子守恒", "energy": "能量·反应进程", "broken": "断裂的键", "formed": "新生成的键", "labels": "标签", "labelsHint": "显示 / 隐藏分子标签"}, "card": "第一节&第二节 聚合反应 · 己二酸与乙二醇缩聚（制聚酯）"}, {"meta": {"title": "选择性必修3.md · 第一节 & 第二节（聚合反应）", "subtitle": "选择性必修3.md · 第一节 & 第二节（聚合反应）（聚合示意）", "language": "zh-CN", "category": "organic", "accent": "emerald", "engine": "morph", "equation": "\\mathrm{C_6H_5OH + HCHO \\xlongequal{酸或碱、\\Delta} HOCH_2-C_6H_4OH}", "pageTitle": "选择性必修3 · 第五章 合成高分子"}, "conditions": {"text": "酸或碱、Δ"}, "atoms": [{"id": "C1", "el": "C", "color": "#334155", "radius": 0.5, "start": [-0.5705, -0.63, 0.0106], "end": [0.469, -0.7386, 0.1091], "rmol": "C_6H_5OH#1", "pmol": "HOCH_2-C_6H_4OH#1"}, {"id": "C2", "el": "C", "color": "#334155", "radius": 0.5, "start": [-1.162, 0.5381, 0.4784], "end": [-0.1643, 0.4778, -0.1766], "rmol": "C_6H_5OH#1", "pmol": "HOCH_2-C_6H_4OH#1"}, {"id": "C3", "el": "C", "color": "#334155", "radius": 0.5, "start": [-2.5522, 0.6488, 0.4957], "end": [-1.5319, 0.5395, -0.4486], "rmol": "C_6H_5OH#1", "pmol": "HOCH_2-C_6H_4OH#1"}, {"id": "C4", "el": "C", "color": "#334155", "radius": 0.5, "start": [-3.3409, -0.4103, 0.0446], "end": [-2.2902, -0.6301, -0.4376], "rmol": "C_6H_5OH#1", "pmol": "HOCH_2-C_6H_4OH#1"}, {"id": "C5", "el": "C", "color": "#334155", "radius": 0.5, "start": [-2.7393, -1.5797, -0.4235], "end": [-1.6809, -1.8508, -0.156], "rmol": "C_6H_5OH#1", "pmol": "HOCH_2-C_6H_4OH#1"}, {"id": "C6", "el": "C", "color": "#334155", "radius": 0.5, "start": [-1.348, -1.6925, -0.4416], "end": [-0.3115, -1.9043, 0.1153], "rmol": "C_6H_5OH#1", "pmol": "HOCH_2-C_6H_4OH#1"}, {"id": "O1", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [0.7916, -0.6965, 0.0109], "end": [2.4278, -2.0768, 0.6667], "rmol": "C_6H_5OH#1", "pmol": "HOCH_2-C_6H_4OH#1"}, {"id": "H1", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [1.0573, -1.5622, -0.3393], "end": [3.3796, -1.9857, 0.838], "rmol": "C_6H_5OH#1", "pmol": "HOCH_2-C_6H_4OH#1"}, {"id": "H2", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-0.8939, -2.6073, -0.8082], "end": [2.1621, -0.1427, 1.2747], "rmol": "C_6H_5OH#1", "pmol": "HOCH_2-C_6H_4OH#1"}, {"id": "H3", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-3.3562, -2.403, -0.7742], "end": [2.4981, -0.3769, -0.4676], "rmol": "C_6H_5OH#1", "pmol": "HOCH_2-C_6H_4OH#1"}, {"id": "H4", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-4.4244, -0.3239, 0.0581], "end": [0.147, -2.8669, 0.3331], "rmol": "C_6H_5OH#1", "pmol": "HOCH_2-C_6H_4OH#1"}, {"id": "H5", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-3.019, 1.5597, 0.8604], "end": [-2.2688, -2.7651, -0.1464], "rmol": "C_6H_5OH#1", "pmol": "HOCH_2-C_6H_4OH#1"}, {"id": "H6", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-0.5425, 1.3588, 0.8281], "end": [-3.3556, -0.5917, -0.6482], "rmol": "C_6H_5OH#1", "pmol": "HOCH_2-C_6H_4OH#1"}, {"id": "C7", "el": "C", "color": "#334155", "radius": 0.5, "start": [1.7, 0.6, 0.0], "end": [1.9476, -0.762, 0.3973], "rmol": "HCHO#1", "pmol": "HOCH_2-C_6H_4OH#1"}, {"id": "O2", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [1.7, 1.8, 0.0], "end": [0.5872, 1.6213, -0.1854], "rmol": "HCHO#1", "pmol": "HOCH_2-C_6H_4OH#1"}, {"id": "H7", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [0.743, 0.05, 0.0], "end": [0.0055, 2.3698, -0.3982], "rmol": "HCHO#1", "pmol": "HOCH_2-C_6H_4OH#1"}, {"id": "H8", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [2.657, 0.05, 0.0], "end": [-2.0207, 1.483, -0.6697], "rmol": "HCHO#1", "pmol": "HOCH_2-C_6H_4OH#1"}], "bonds": {"before": [{"a": "O1", "b": "C1", "order": 1}, {"a": "C1", "b": "C6", "order": 2}, {"a": "C6", "b": "C5", "order": 2}, {"a": "C5", "b": "C4", "order": 2}, {"a": "C4", "b": "C3", "order": 2}, {"a": "C3", "b": "C2", "order": 2}, {"a": "C2", "b": "C1", "order": 2}, {"a": "O1", "b": "H1", "order": 1}, {"a": "C6", "b": "H2", "order": 1}, {"a": "C5", "b": "H3", "order": 1}, {"a": "C4", "b": "H4", "order": 1}, {"a": "C3", "b": "H5", "order": 1}, {"a": "C2", "b": "H6", "order": 1}, {"a": "C7", "b": "O2", "order": 2}, {"a": "C7", "b": "H7", "order": 1}, {"a": "C7", "b": "H8", "order": 1}], "after": [{"a": "O1", "b": "C7", "order": 1}, {"a": "C7", "b": "C1", "order": 1}, {"a": "C1", "b": "C6", "order": 2}, {"a": "C6", "b": "C5", "order": 2}, {"a": "C5", "b": "C4", "order": 2}, {"a": "C4", "b": "C3", "order": 2}, {"a": "C3", "b": "C2", "order": 2}, {"a": "C2", "b": "O2", "order": 1}, {"a": "C2", "b": "C1", "order": 2}, {"a": "O1", "b": "H1", "order": 1}, {"a": "C7", "b": "H2", "order": 1}, {"a": "C7", "b": "H3", "order": 1}, {"a": "C6", "b": "H4", "order": 1}, {"a": "C5", "b": "H5", "order": 1}, {"a": "C4", "b": "H6", "order": 1}, {"a": "C3", "b": "H8", "order": 1}, {"a": "O2", "b": "H7", "order": 1}], "broken": [{"a": "O1", "b": "C1", "order": 1}, {"a": "C6", "b": "H2", "order": 1}, {"a": "C5", "b": "H3", "order": 1}, {"a": "C4", "b": "H4", "order": 1}, {"a": "C3", "b": "H5", "order": 1}, {"a": "C2", "b": "H6", "order": 1}, {"a": "C7", "b": "O2", "order": 2}, {"a": "C7", "b": "H7", "order": 1}, {"a": "C7", "b": "H8", "order": 1}], "formed": [{"a": "O1", "b": "C7", "order": 1}, {"a": "C7", "b": "C1", "order": 1}, {"a": "C2", "b": "O2", "order": 1}, {"a": "C7", "b": "H2", "order": 1}, {"a": "C7", "b": "H3", "order": 1}, {"a": "C6", "b": "H4", "order": 1}, {"a": "C5", "b": "H5", "order": 1}, {"a": "C4", "b": "H6", "order": 1}, {"a": "C3", "b": "H8", "order": 1}, {"a": "O2", "b": "H7", "order": 1}], "kept": [{"a": "C1", "b": "C6", "order": 2}, {"a": "C6", "b": "C5", "order": 2}, {"a": "C5", "b": "C4", "order": 2}, {"a": "C4", "b": "C3", "order": 2}, {"a": "C3", "b": "C2", "order": 2}, {"a": "C2", "b": "C1", "order": 2}, {"a": "O1", "b": "H1", "order": 1}]}, "labels": [{"id": "reactant-C_6H_5OH#1", "text": "苯酚 (C_6H_5OH)", "color": "slate", "phase": "reactant", "atoms": ["C1", "C2", "C3", "C4", "C5", "C6", "O1", "H1", "H2", "H3", "H4", "H5", "H6"]}, {"id": "reactant-HCHO#1", "text": "甲醛 (HCHO)", "color": "slate", "phase": "reactant", "atoms": ["C7", "O2", "H7", "H8"]}, {"id": "product-HOCH_2-C_6H_4OH#1", "text": "羟甲基苯酚(酚醛单单元示意) (HOCH_2-C_6H_4OH)", "color": "slate", "phase": "product", "atoms": ["C1", "C2", "C3", "C4", "C5", "C6", "O1", "H1", "H2", "H3", "H4", "H5", "H6", "C7", "O2", "H7", "H8"]}], "elementCounts": {"C": 7, "O": 2, "H": 8}, "legend": [{"el": "C", "color": "#334155", "name": "碳"}, {"el": "O", "color": "#ef4444", "name": "氧"}, {"el": "H", "color": "#f1f5f9", "name": "氢"}], "steps": [{"title": "反应物靠近", "html": "<span class='text-slate-700 font-semibold'>C₆H₅OH、HCHO</span> 分子相互靠近。此时分子内原子保持原有连接，体系能量尚未发生变化。"}, {"title": "酸或碱、Δ，旧键断裂", "html": "在<b>酸或碱、Δ</b>条件下，反应物分子内的<b>化学键断裂</b>（动画中橙色虚线的键），原子被打散，处于不稳定的过渡状态，随即开始重新组合。"}, {"title": "生成产物", "html": "原子重新组合生成 <span class='text-emerald-700 font-semibold'>HOCH₂-C₆H₄OH</span>，新键形成（绿色虚线的键）。反应前后原子种类与数目不变，符合<b>质量守恒</b>。<p class='text-amber-700 text-xs mt-2'>注：缩聚反应示意：以 1 个单元展示官能团间脱去小分子（水）生成高分子的过程；实际为 n 个单体逐步缩聚。</p>"}], "fragments": [], "energy": null, "electrons": [], "ui": {"reactants": "反应物", "products": "产物", "progress": "反应进度", "play": "自动演示", "pause": "暂停演示", "reset": "复位", "prev": "上一步", "next": "下一步", "hint": "拖动滑块观察化学键的断裂、原子重组与守恒，或点击上方步骤跳转。", "drag": "拖拽旋转 · 滚轮缩放 · 右键平移", "legend": "原子图例", "conservation": "原子守恒", "energy": "能量·反应进程", "broken": "断裂的键", "formed": "新生成的键", "labels": "标签", "labelsHint": "显示 / 隐藏分子标签"}, "card": "第一节&第二节 聚合反应 · 苯酚与甲醛缩聚（制线型酚醛树脂）"}, {"meta": {"title": "选择性必修3.md · 第一节 & 第二节（聚合反应）", "subtitle": "选择性必修3.md · 第一节 & 第二节（聚合反应）（聚合示意）", "language": "zh-CN", "category": "organic", "accent": "emerald", "engine": "morph", "equation": "\\mathrm{HOOC-C_6H_4-COOH + HOCH_2CH_2OH \\xlongequal{催化剂、\\Delta} HOOC-C_6H_4-COOCH_2CH_2OH + H_2O}", "pageTitle": "选择性必修3 · 第五章 合成高分子"}, "conditions": {"text": "催化剂、Δ"}, "atoms": [{"id": "C1", "el": "C", "color": "#334155", "radius": 0.5, "start": [-3.106, -0.6826, -0.025], "end": [-4.7391, -0.3843, -0.1521], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "C2", "el": "C", "color": "#334155", "radius": 0.5, "start": [-2.3684, 0.2022, 0.7723], "end": [-3.7998, 0.3995, -0.8347], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "C3", "el": "C", "color": "#334155", "radius": 0.5, "start": [-0.97, 0.1992, 0.7178], "end": [-2.4368, 0.0897, -0.766], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "C4", "el": "C", "color": "#334155", "radius": 0.5, "start": [-0.3006, -0.6888, -0.1344], "end": [-2.0011, -1.0088, -0.0121], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "C5", "el": "C", "color": "#334155", "radius": 0.5, "start": [-1.0388, -1.5732, -0.9313], "end": [-2.9438, -1.792, 0.6696], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "C6", "el": "C", "color": "#334155", "radius": 0.5, "start": [-2.436, -1.5701, -0.8768], "end": [-4.3065, -1.4822, 0.6009], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "O1", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-5.1164, 0.1794, 0.8526], "end": [-6.9748, -0.8384, 0.4385], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "O2", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [1.7758, 0.1642, 0.5838], "end": [3.6879, -0.3689, 0.6359], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "C7", "el": "C", "color": "#334155", "radius": 0.5, "start": [-4.5888, -0.7154, -0.0009], "end": [-6.1717, -0.0146, -0.2565], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "C8", "el": "C", "color": "#334155", "radius": 0.5, "start": [1.1794, -0.7282, -0.2258], "end": [-0.5649, -1.3855, 0.0975], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "O3", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-5.2957, -1.4529, -0.662], "end": [-6.6196, 0.923, -0.8898], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "O4", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [1.8295, -1.4686, -0.9398], "end": [-0.1689, -2.3466, 0.7359], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "H1", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-6.0837, 0.0462, 0.7642], "end": [-7.8742, -0.4813, 0.2814], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "H2", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [2.7327, 0.0268, 0.4203], "end": [3.999, 0.2453, -0.0509], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "H3", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-2.9985, -2.2624, -1.5012], "end": [-5.0191, -2.1042, 1.1382], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "H4", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-0.5297, -2.2679, -1.5975], "end": [-2.6214, -2.6494, 1.259], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "H5", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-0.414, 0.8933, 1.3441], "end": [2.0607, -0.299, -1.4436], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "H6", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-2.8709, 0.8987, 1.4399], "end": [1.8194, -1.8649, -0.7051], "rmol": "HOOC-C_6H_4-COOH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "O5", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-0.0881, 0.9156, -0.3307], "end": [0.2124, -0.516, -0.594], "rmol": "HOCH_2CH_2OH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "C9", "el": "C", "color": "#334155", "radius": 0.5, "start": [1.1718, 0.2752, -0.4757], "end": [2.2707, -0.262, 0.7026], "rmol": "HOCH_2CH_2OH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "C10", "el": "C", "color": "#334155", "radius": 0.5, "start": [2.284, 1.0871, 0.1805], "end": [1.6201, -0.7943, -0.5709], "rmol": "HOCH_2CH_2OH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "H7", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-0.2925, 0.9612, 0.6189], "end": [-4.1259, 1.2554, -1.4239], "rmol": "HOCH_2CH_2OH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "H8", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [1.3771, 0.1466, -1.5435], "end": [-1.7302, 0.7146, -1.3071], "rmol": "HOCH_2CH_2OH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "H9", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [1.1121, -0.7282, -0.0405], "end": [1.9259, -0.8217, 1.5774], "rmol": "HOCH_2CH_2OH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "H10", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [2.0619, 1.2707, 1.2372], "end": [2.0018, 0.7866, 0.8698], "rmol": "HOCH_2CH_2OH#1", "pmol": "HOOC-C_6H_4-COOCH_2CH_2OH#1"}, {"id": "O6", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [3.5351, 0.421, 0.0821], "end": [1.7, 0.6, 0.0], "rmol": "HOCH_2CH_2OH#1", "pmol": "H2O#1"}, {"id": "H11", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [2.3713, 2.0667, -0.3007], "end": [0.9409, 1.1877, 0.0], "rmol": "HOCH_2CH_2OH#1", "pmol": "H2O#1"}, {"id": "H12", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [3.4674, -0.4159, 0.5726], "end": [2.4591, 1.1877, 0.0], "rmol": "HOCH_2CH_2OH#1", "pmol": "H2O#1"}], "bonds": {"before": [{"a": "O1", "b": "C7", "order": 1}, {"a": "C7", "b": "O3", "order": 2}, {"a": "C7", "b": "C1", "order": 1}, {"a": "C1", "b": "C6", "order": 2}, {"a": "C6", "b": "C5", "order": 2}, {"a": "C5", "b": "C4", "order": 2}, {"a": "C4", "b": "C8", "order": 1}, {"a": "C8", "b": "O4", "order": 2}, {"a": "C8", "b": "O2", "order": 1}, {"a": "C4", "b": "C3", "order": 2}, {"a": "C3", "b": "C2", "order": 2}, {"a": "C2", "b": "C1", "order": 2}, {"a": "O1", "b": "H1", "order": 1}, {"a": "C6", "b": "H3", "order": 1}, {"a": "C5", "b": "H4", "order": 1}, {"a": "O2", "b": "H2", "order": 1}, {"a": "C3", "b": "H5", "order": 1}, {"a": "C2", "b": "H6", "order": 1}, {"a": "O5", "b": "C9", "order": 1}, {"a": "C9", "b": "C10", "order": 1}, {"a": "C10", "b": "O6", "order": 1}, {"a": "O5", "b": "H7", "order": 1}, {"a": "C9", "b": "H8", "order": 1}, {"a": "C9", "b": "H9", "order": 1}, {"a": "C10", "b": "H10", "order": 1}, {"a": "C10", "b": "H11", "order": 1}, {"a": "O6", "b": "H12", "order": 1}], "after": [{"a": "O1", "b": "C7", "order": 1}, {"a": "C7", "b": "O3", "order": 2}, {"a": "C7", "b": "C1", "order": 1}, {"a": "C1", "b": "C6", "order": 2}, {"a": "C6", "b": "C5", "order": 2}, {"a": "C5", "b": "C4", "order": 2}, {"a": "C4", "b": "C8", "order": 1}, {"a": "C8", "b": "O4", "order": 2}, {"a": "C8", "b": "O5", "order": 1}, {"a": "O5", "b": "C10", "order": 1}, {"a": "C10", "b": "C9", "order": 1}, {"a": "C9", "b": "O2", "order": 1}, {"a": "C4", "b": "C3", "order": 2}, {"a": "C3", "b": "C2", "order": 2}, {"a": "C2", "b": "C1", "order": 2}, {"a": "O1", "b": "H1", "order": 1}, {"a": "C6", "b": "H3", "order": 1}, {"a": "C5", "b": "H4", "order": 1}, {"a": "C10", "b": "H5", "order": 1}, {"a": "C10", "b": "H6", "order": 1}, {"a": "C9", "b": "H10", "order": 1}, {"a": "C9", "b": "H9", "order": 1}, {"a": "O2", "b": "H2", "order": 1}, {"a": "C3", "b": "H8", "order": 1}, {"a": "C2", "b": "H7", "order": 1}, {"a": "O6", "b": "H12", "order": 1}, {"a": "O6", "b": "H11", "order": 1}], "broken": [{"a": "C8", "b": "O2", "order": 1}, {"a": "C3", "b": "H5", "order": 1}, {"a": "C2", "b": "H6", "order": 1}, {"a": "O5", "b": "C9", "order": 1}, {"a": "C10", "b": "O6", "order": 1}, {"a": "O5", "b": "H7", "order": 1}, {"a": "C9", "b": "H8", "order": 1}, {"a": "C10", "b": "H10", "order": 1}, {"a": "C10", "b": "H11", "order": 1}], "formed": [{"a": "C8", "b": "O5", "order": 1}, {"a": "O5", "b": "C10", "order": 1}, {"a": "C9", "b": "O2", "order": 1}, {"a": "C10", "b": "H5", "order": 1}, {"a": "C10", "b": "H6", "order": 1}, {"a": "C9", "b": "H10", "order": 1}, {"a": "C3", "b": "H8", "order": 1}, {"a": "C2", "b": "H7", "order": 1}, {"a": "O6", "b": "H11", "order": 1}], "kept": [{"a": "O1", "b": "C7", "order": 1}, {"a": "C7", "b": "O3", "order": 2}, {"a": "C7", "b": "C1", "order": 1}, {"a": "C1", "b": "C6", "order": 2}, {"a": "C6", "b": "C5", "order": 2}, {"a": "C5", "b": "C4", "order": 2}, {"a": "C4", "b": "C8", "order": 1}, {"a": "C8", "b": "O4", "order": 2}, {"a": "C10", "b": "C9", "order": 1}, {"a": "C4", "b": "C3", "order": 2}, {"a": "C3", "b": "C2", "order": 2}, {"a": "C2", "b": "C1", "order": 2}, {"a": "O1", "b": "H1", "order": 1}, {"a": "C6", "b": "H3", "order": 1}, {"a": "C5", "b": "H4", "order": 1}, {"a": "C9", "b": "H9", "order": 1}, {"a": "O2", "b": "H2", "order": 1}, {"a": "O6", "b": "H12", "order": 1}]}, "labels": [{"id": "reactant-HOOC-C_6H_4-COOH#1", "text": "对苯二甲酸 (HOOC-C_6H_4-COOH)", "color": "slate", "phase": "reactant", "atoms": ["C1", "C2", "C3", "C4", "C5", "C6", "O1", "O2", "C7", "C8", "O3", "O4", "H1", "H2", "H3", "H4", "H5", "H6"]}, {"id": "reactant-HOCH_2CH_2OH#1", "text": "乙二醇 (HOCH_2CH_2OH)", "color": "slate", "phase": "reactant", "atoms": ["O5", "C9", "C10", "H7", "H8", "H9", "H10", "O6", "H11", "H12"]}, {"id": "product-HOOC-C_6H_4-COOCH_2CH_2OH#1", "text": "单酯(对苯二甲酸单乙二醇酯示意) (HOOC-C_6H_4-COOCH_2CH_2OH)", "color": "slate", "phase": "product", "atoms": ["C1", "C2", "C3", "C4", "C5", "C6", "O1", "O2", "C7", "C8", "O3", "O4", "H1", "H2", "H3", "H4", "H5", "H6", "O5", "C9", "C10", "H7", "H8", "H9", "H10"]}, {"id": "product-H2O#1", "text": "水 (H₂O)", "color": "cyan", "phase": "product", "atoms": ["O6", "H11", "H12"]}], "elementCounts": {"C": 10, "O": 6, "H": 12}, "legend": [{"el": "C", "color": "#334155", "name": "碳"}, {"el": "O", "color": "#ef4444", "name": "氧"}, {"el": "H", "color": "#f1f5f9", "name": "氢"}], "steps": [{"title": "反应物靠近", "html": "<span class='text-slate-700 font-semibold'>HOOC-C₆H₄-COOH、HOCH₂CH₂OH</span> 分子相互靠近。此时分子内原子保持原有连接，体系能量尚未发生变化。"}, {"title": "催化剂、Δ，旧键断裂", "html": "在<b>催化剂、Δ</b>条件下，反应物分子内的<b>化学键断裂</b>（动画中橙色虚线的键），原子被打散，处于不稳定的过渡状态，随即开始重新组合。"}, {"title": "生成产物", "html": "原子重新组合生成 <span class='text-emerald-700 font-semibold'>HOOC-C₆H₄-COOCH₂CH₂OH、H₂O</span>，新键形成（绿色虚线的键）。反应前后原子种类与数目不变，符合<b>质量守恒</b>。<p class='text-amber-700 text-xs mt-2'>注：缩聚反应示意：以 1 个单元展示官能团间脱去小分子（水）生成高分子的过程；实际为 n 个单体逐步缩聚。</p>"}], "fragments": [], "energy": null, "electrons": [], "ui": {"reactants": "反应物", "products": "产物", "progress": "反应进度", "play": "自动演示", "pause": "暂停演示", "reset": "复位", "prev": "上一步", "next": "下一步", "hint": "拖动滑块观察化学键的断裂、原子重组与守恒，或点击上方步骤跳转。", "drag": "拖拽旋转 · 滚轮缩放 · 右键平移", "legend": "原子图例", "conservation": "原子守恒", "energy": "能量·反应进程", "broken": "断裂的键", "formed": "新生成的键", "labels": "标签", "labelsHint": "显示 / 隐藏分子标签"}, "card": "第一节&第二节 聚合反应 · 对苯二甲酸与乙二醇缩聚（制涤纶）"}, {"meta": {"title": "选择性必修3.md · 第一节 & 第二节（聚合反应）", "subtitle": "选择性必修3.md · 第一节 & 第二节（聚合反应）（聚合示意）", "language": "zh-CN", "category": "organic", "accent": "emerald", "engine": "morph", "equation": "\\mathrm{H_2N-(CH_2)_6-NH_2 + HOOC-(CH_2)_4-COOH \\xlongequal{\\Delta} H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH + H_2O}", "pageTitle": "选择性必修3 · 第五章 合成高分子"}, "conditions": {"text": "Δ"}, "atoms": [{"id": "N1", "el": "N", "color": "#3b82f6", "radius": 0.46, "start": [-5.9061, -0.3115, 0.3769], "end": [-1.1881, -1.1124, -1.2871], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "N2", "el": "N", "color": "#3b82f6", "radius": 0.46, "start": [2.3234, -0.5134, 0.6829], "end": [-8.3061, 0.5517, 1.8173], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "C1", "el": "C", "color": "#334155", "radius": 0.5, "start": [-4.5509, -0.6025, 0.8307], "end": [4.0181, -0.5244, 1.6157], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "C2", "el": "C", "color": "#334155", "radius": 0.5, "start": [-3.5498, -0.4868, -0.3185], "end": [3.3353, -0.8866, 0.3234], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "C3", "el": "C", "color": "#334155", "radius": 0.5, "start": [-2.1259, -0.792, 0.1547], "end": [2.8894, 0.3522, -0.4514], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "C4", "el": "C", "color": "#334155", "radius": 0.5, "start": [-1.123, -0.675, -0.9954], "end": [2.361, 0.04, -1.8571], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "C5", "el": "C", "color": "#334155", "radius": 0.5, "start": [0.3021, -1.079, -0.6045], "end": [1.1336, -0.8705, -1.9063], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "C6", "el": "C", "color": "#334155", "radius": 0.5, "start": [0.9393, -0.1354, 0.416], "end": [-0.1299, -0.2277, -1.3623], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "C7", "el": "C", "color": "#334155", "radius": 0.5, "start": [-1.0807, 1.3981, 0.4577], "end": [-2.4421, -0.7116, -0.6803], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "C8", "el": "C", "color": "#334155", "radius": 0.5, "start": [-0.0175, 0.3558, 0.6755], "end": [-3.5706, -1.6604, -1.0724], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "C9", "el": "C", "color": "#334155", "radius": 0.5, "start": [1.2193, 0.625, -0.1803], "end": [-4.9408, -1.2231, -0.5466], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "C10", "el": "C", "color": "#334155", "radius": 0.5, "start": [2.288, -0.4511, 0.032], "end": [-5.0381, -1.2563, 0.9809], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "C11", "el": "C", "color": "#334155", "radius": 0.5, "start": [3.5419, -0.201, -0.8058], "end": [-6.4615, -1.0272, 1.5011], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "C12", "el": "C", "color": "#334155", "radius": 0.5, "start": [4.3734, 0.9409, -0.2842], "end": [-6.9888, 0.3786, 1.2151], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "O1", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-2.1262, 1.2298, 1.2915], "end": [4.2694, -1.6146, 2.3687], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "O2", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-1.0786, 2.3032, -0.3583], "end": [4.3509, 0.5819, 2.0015], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "O3", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [4.2824, 1.4905, 0.7997], "end": [-0.2144, 0.9532, -1.0481], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H1", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-5.9389, 0.6255, -0.0236], "end": [4.7118, -1.2502, 3.1643], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H2", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-6.158, -0.9474, -0.379], "end": [4.039, -1.4735, -0.2767], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H3", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-4.2885, 0.094, 1.6344], "end": [2.4666, -1.5067, 0.5675], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H4", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-4.5275, -1.6126, 1.2538], "end": [2.1345, 0.8949, 0.1293], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H5", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-3.825, -1.1821, -1.1215], "end": [3.739, 1.0393, -0.5568], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H6", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-3.5845, 0.5252, -0.7414], "end": [3.1653, -0.4317, -2.4355], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H7", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-1.8596, -0.0964, 0.9582], "end": [2.1327, 0.9879, -2.3602], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H8", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-2.0881, -1.8046, 0.574], "end": [0.9339, -1.1263, -2.9544], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H9", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-1.447, -1.3229, -1.8194], "end": [1.3226, -1.8082, -1.3741], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H10", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-1.1211, 0.3511, -1.383], "end": [-0.9779, -2.1012, -1.3315], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H11", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [0.2975, -2.105, -0.2154], "end": [-2.6757, 0.3135, -0.989], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H12", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [0.9128, -1.091, -1.5166], "end": [-2.2844, -0.7093, 0.4032], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H13", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [0.3889, -0.1562, 1.3614], "end": [-3.3436, -2.6745, -0.7205], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H14", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [0.9179, 0.8951, 0.0456], "end": [-3.6232, -1.7207, -2.167], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H15", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [2.8554, -0.5011, -0.1867], "end": [-5.6994, -1.8929, -0.9698], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H16", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [2.3567, -1.4761, 1.0168], "end": [-5.1623, -0.2163, -0.9184], "rmol": "H_2N-(CH_2)_6-NH_2#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H17", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-2.7381, 1.9575, 1.0533], "end": [-4.3707, -0.5058, 1.4194], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H18", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-0.4425, -0.6221, 0.4241], "end": [-4.6966, -2.2348, 1.3404], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H19", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [0.2597, 0.3636, 1.7355], "end": [-7.1346, -1.7774, 1.067], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H20", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [1.6219, 1.6151, 0.0649], "end": [-6.4579, -1.1979, 2.5856], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H21", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [0.9358, 0.6561, -1.2398], "end": [-6.3059, 1.1283, 1.6286], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H22", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [2.5491, -0.5118, 1.0955], "end": [-7.067, 0.5532, 0.1376], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H23", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [1.8698, -1.4252, -0.2502], "end": [-8.6614, 1.48, 1.591], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "H24", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [3.2619, 0.0051, -1.8447], "end": [-8.9618, -0.1126, 1.4081], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1"}, {"id": "O4", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [5.3192, 1.318, -1.1668], "end": [1.7, 0.6, 0.0], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H2O#1"}, {"id": "H25", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [4.1722, -1.097, -0.7856], "end": [0.9409, 1.1877, 0.0], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H2O#1"}, {"id": "H26", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [5.789, 2.0495, -0.7139], "end": [2.4591, 1.1877, 0.0], "rmol": "HOOC-(CH_2)_4-COOH#1", "pmol": "H2O#1"}], "bonds": {"before": [{"a": "N1", "b": "C1", "order": 1}, {"a": "C1", "b": "C2", "order": 1}, {"a": "C2", "b": "C3", "order": 1}, {"a": "C3", "b": "C4", "order": 1}, {"a": "C4", "b": "C5", "order": 1}, {"a": "C5", "b": "C6", "order": 1}, {"a": "C6", "b": "N2", "order": 1}, {"a": "N1", "b": "H1", "order": 1}, {"a": "N1", "b": "H2", "order": 1}, {"a": "C1", "b": "H3", "order": 1}, {"a": "C1", "b": "H4", "order": 1}, {"a": "C2", "b": "H5", "order": 1}, {"a": "C2", "b": "H6", "order": 1}, {"a": "C3", "b": "H7", "order": 1}, {"a": "C3", "b": "H8", "order": 1}, {"a": "C4", "b": "H9", "order": 1}, {"a": "C4", "b": "H10", "order": 1}, {"a": "C5", "b": "H11", "order": 1}, {"a": "C5", "b": "H12", "order": 1}, {"a": "C6", "b": "H13", "order": 1}, {"a": "C6", "b": "H14", "order": 1}, {"a": "N2", "b": "H15", "order": 1}, {"a": "N2", "b": "H16", "order": 1}, {"a": "O1", "b": "C7", "order": 1}, {"a": "C7", "b": "O2", "order": 2}, {"a": "C7", "b": "C8", "order": 1}, {"a": "C8", "b": "C9", "order": 1}, {"a": "C9", "b": "C10", "order": 1}, {"a": "C10", "b": "C11", "order": 1}, {"a": "C11", "b": "C12", "order": 1}, {"a": "C12", "b": "O3", "order": 2}, {"a": "C12", "b": "O4", "order": 1}, {"a": "O1", "b": "H17", "order": 1}, {"a": "C8", "b": "H18", "order": 1}, {"a": "C8", "b": "H19", "order": 1}, {"a": "C9", "b": "H20", "order": 1}, {"a": "C9", "b": "H21", "order": 1}, {"a": "C10", "b": "H22", "order": 1}, {"a": "C10", "b": "H23", "order": 1}, {"a": "C11", "b": "H24", "order": 1}, {"a": "C11", "b": "H25", "order": 1}, {"a": "O4", "b": "H26", "order": 1}], "after": [{"a": "N2", "b": "C12", "order": 1}, {"a": "C12", "b": "C11", "order": 1}, {"a": "C11", "b": "C10", "order": 1}, {"a": "C10", "b": "C9", "order": 1}, {"a": "C9", "b": "C8", "order": 1}, {"a": "C8", "b": "C7", "order": 1}, {"a": "C7", "b": "N1", "order": 1}, {"a": "N1", "b": "C6", "order": 1}, {"a": "C6", "b": "O3", "order": 2}, {"a": "C6", "b": "C5", "order": 1}, {"a": "C5", "b": "C4", "order": 1}, {"a": "C4", "b": "C3", "order": 1}, {"a": "C3", "b": "C2", "order": 1}, {"a": "C2", "b": "C1", "order": 1}, {"a": "C1", "b": "O2", "order": 2}, {"a": "C1", "b": "O1", "order": 1}, {"a": "N2", "b": "H24", "order": 1}, {"a": "N2", "b": "H23", "order": 1}, {"a": "C12", "b": "H22", "order": 1}, {"a": "C12", "b": "H21", "order": 1}, {"a": "C11", "b": "H20", "order": 1}, {"a": "C11", "b": "H19", "order": 1}, {"a": "C10", "b": "H18", "order": 1}, {"a": "C10", "b": "H17", "order": 1}, {"a": "C9", "b": "H16", "order": 1}, {"a": "C9", "b": "H15", "order": 1}, {"a": "C8", "b": "H14", "order": 1}, {"a": "C8", "b": "H13", "order": 1}, {"a": "C7", "b": "H12", "order": 1}, {"a": "C7", "b": "H11", "order": 1}, {"a": "N1", "b": "H10", "order": 1}, {"a": "C5", "b": "H9", "order": 1}, {"a": "C5", "b": "H8", "order": 1}, {"a": "C4", "b": "H7", "order": 1}, {"a": "C4", "b": "H6", "order": 1}, {"a": "C3", "b": "H5", "order": 1}, {"a": "C3", "b": "H4", "order": 1}, {"a": "C2", "b": "H3", "order": 1}, {"a": "C2", "b": "H2", "order": 1}, {"a": "O1", "b": "H1", "order": 1}, {"a": "O4", "b": "H26", "order": 1}, {"a": "O4", "b": "H25", "order": 1}], "broken": [{"a": "N1", "b": "C1", "order": 1}, {"a": "C6", "b": "N2", "order": 1}, {"a": "N1", "b": "H1", "order": 1}, {"a": "N1", "b": "H2", "order": 1}, {"a": "C1", "b": "H3", "order": 1}, {"a": "C1", "b": "H4", "order": 1}, {"a": "C2", "b": "H5", "order": 1}, {"a": "C2", "b": "H6", "order": 1}, {"a": "C3", "b": "H7", "order": 1}, {"a": "C3", "b": "H8", "order": 1}, {"a": "C4", "b": "H9", "order": 1}, {"a": "C4", "b": "H10", "order": 1}, {"a": "C5", "b": "H11", "order": 1}, {"a": "C5", "b": "H12", "order": 1}, {"a": "C6", "b": "H13", "order": 1}, {"a": "C6", "b": "H14", "order": 1}, {"a": "N2", "b": "H15", "order": 1}, {"a": "N2", "b": "H16", "order": 1}, {"a": "O1", "b": "C7", "order": 1}, {"a": "C7", "b": "O2", "order": 2}, {"a": "C12", "b": "O3", "order": 2}, {"a": "C12", "b": "O4", "order": 1}, {"a": "O1", "b": "H17", "order": 1}, {"a": "C8", "b": "H18", "order": 1}, {"a": "C8", "b": "H19", "order": 1}, {"a": "C9", "b": "H20", "order": 1}, {"a": "C9", "b": "H21", "order": 1}, {"a": "C10", "b": "H22", "order": 1}, {"a": "C10", "b": "H23", "order": 1}, {"a": "C11", "b": "H24", "order": 1}, {"a": "C11", "b": "H25", "order": 1}], "formed": [{"a": "N2", "b": "C12", "order": 1}, {"a": "C7", "b": "N1", "order": 1}, {"a": "N1", "b": "C6", "order": 1}, {"a": "C6", "b": "O3", "order": 2}, {"a": "C1", "b": "O2", "order": 2}, {"a": "C1", "b": "O1", "order": 1}, {"a": "N2", "b": "H24", "order": 1}, {"a": "N2", "b": "H23", "order": 1}, {"a": "C12", "b": "H22", "order": 1}, {"a": "C12", "b": "H21", "order": 1}, {"a": "C11", "b": "H20", "order": 1}, {"a": "C11", "b": "H19", "order": 1}, {"a": "C10", "b": "H18", "order": 1}, {"a": "C10", "b": "H17", "order": 1}, {"a": "C9", "b": "H16", "order": 1}, {"a": "C9", "b": "H15", "order": 1}, {"a": "C8", "b": "H14", "order": 1}, {"a": "C8", "b": "H13", "order": 1}, {"a": "C7", "b": "H12", "order": 1}, {"a": "C7", "b": "H11", "order": 1}, {"a": "N1", "b": "H10", "order": 1}, {"a": "C5", "b": "H9", "order": 1}, {"a": "C5", "b": "H8", "order": 1}, {"a": "C4", "b": "H7", "order": 1}, {"a": "C4", "b": "H6", "order": 1}, {"a": "C3", "b": "H5", "order": 1}, {"a": "C3", "b": "H4", "order": 1}, {"a": "C2", "b": "H3", "order": 1}, {"a": "C2", "b": "H2", "order": 1}, {"a": "O1", "b": "H1", "order": 1}, {"a": "O4", "b": "H25", "order": 1}], "kept": [{"a": "C12", "b": "C11", "order": 1}, {"a": "C11", "b": "C10", "order": 1}, {"a": "C10", "b": "C9", "order": 1}, {"a": "C9", "b": "C8", "order": 1}, {"a": "C8", "b": "C7", "order": 1}, {"a": "C6", "b": "C5", "order": 1}, {"a": "C5", "b": "C4", "order": 1}, {"a": "C4", "b": "C3", "order": 1}, {"a": "C3", "b": "C2", "order": 1}, {"a": "C2", "b": "C1", "order": 1}, {"a": "O4", "b": "H26", "order": 1}]}, "labels": [{"id": "reactant-H_2N-(CH_2)_6-NH_2#1", "text": "己二胺 (H_2N-(CH_2)_6-NH_2)", "color": "slate", "phase": "reactant", "atoms": ["N1", "N2", "C1", "C2", "C3", "C4", "C5", "C6", "H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8", "H9", "H10", "H11", "H12", "H13", "H14", "H15", "H16"]}, {"id": "reactant-HOOC-(CH_2)_4-COOH#1", "text": "己二酸 (HOOC-(CH_2)_4-COOH)", "color": "slate", "phase": "reactant", "atoms": ["C7", "C8", "C9", "C10", "C11", "C12", "O1", "O2", "O3", "H17", "H18", "H19", "H20", "H21", "H22", "H23", "H24", "O4", "H25", "H26"]}, {"id": "product-H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH#1", "text": "单酰胺(己二胺-己二酸单单元示意) (H_2N-(CH_2)_6-NHCO-(CH_2)_4-COOH)", "color": "slate", "phase": "product", "atoms": ["N1", "N2", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "O1", "O2", "O3", "H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8", "H9", "H10", "H11", "H12", "H13", "H14", "H15", "H16", "H17", "H18", "H19", "H20", "H21", "H22", "H23", "H24"]}, {"id": "product-H2O#1", "text": "水 (H₂O)", "color": "cyan", "phase": "product", "atoms": ["O4", "H25", "H26"]}], "elementCounts": {"N": 2, "C": 12, "O": 4, "H": 26}, "legend": [{"el": "N", "color": "#3b82f6", "name": "氮"}, {"el": "C", "color": "#334155", "name": "碳"}, {"el": "O", "color": "#ef4444", "name": "氧"}, {"el": "H", "color": "#f1f5f9", "name": "氢"}], "steps": [{"title": "反应物靠近", "html": "<span class='text-slate-700 font-semibold'>H₂N-(CH₂)₆-NH₂、HOOC-(CH₂)₄-COOH</span> 分子相互靠近。此时分子内原子保持原有连接，体系能量尚未发生变化。"}, {"title": "Δ，旧键断裂", "html": "在<b>Δ</b>条件下，反应物分子内的<b>化学键断裂</b>（动画中橙色虚线的键），原子被打散，处于不稳定的过渡状态，随即开始重新组合。"}, {"title": "生成产物", "html": "原子重新组合生成 <span class='text-emerald-700 font-semibold'>H₂N-(CH₂)₆-NHCO-(CH₂)₄-COOH、H₂O</span>，新键形成（绿色虚线的键）。反应前后原子种类与数目不变，符合<b>质量守恒</b>。<p class='text-amber-700 text-xs mt-2'>注：缩聚反应示意：以 1 个单元展示官能团间脱去小分子（水）生成高分子的过程；实际为 n 个单体逐步缩聚。</p>"}], "fragments": [], "energy": null, "electrons": [], "ui": {"reactants": "反应物", "products": "产物", "progress": "反应进度", "play": "自动演示", "pause": "暂停演示", "reset": "复位", "prev": "上一步", "next": "下一步", "hint": "拖动滑块观察化学键的断裂、原子重组与守恒，或点击上方步骤跳转。", "drag": "拖拽旋转 · 滚轮缩放 · 右键平移", "legend": "原子图例", "conservation": "原子守恒", "energy": "能量·反应进程", "broken": "断裂的键", "formed": "新生成的键", "labels": "标签", "labelsHint": "显示 / 隐藏分子标签"}, "card": "第一节&第二节 聚合反应 · 己二胺与己二酸缩聚（制锦纶66）"}];;
+    let DATA = ALL[0], curIdx = 0;
+    (function () {
+        let META = DATA.meta, COND = DATA.conditions || {}, UI = DATA.ui || {};
+        const ACCENTS = { amber:'#f59e0b', indigo:'#6366f1', emerald:'#10b981', sky:'#0ea5e9',
+            violet:'#8b5cf6', rose:'#f43f5e', cyan:'#06b6d4', red:'#ef4444', green:'#22c55e',
+            orange:'#f97316', blue:'#3b82f6', slate:'#64748b', teal:'#14b8a6' };
+        let ACC = ACCENTS[META.accent] || ACCENTS.indigo;
+        function hexToRgba(h, a) { const n = parseInt(h.slice(1), 16);
+            return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; }
+        document.documentElement.style.setProperty('--accent', ACC);
+        document.documentElement.style.setProperty('--accent-soft', hexToRgba(ACC, 0.25));
+
+        // Light scene palette (single theme)
+        const SCENE_BG = 0xeef2f7, BOND_COLOR = 0x94a3b8;
+        const BROKEN_COLOR = 0xf59e0b, BROKEN_EMIT = 0xef4444, FORMED_COLOR = 0x34d399, FORMED_EMIT = 0x059669;
+
+        // Phase boundaries (approach / transition / separate)
+        const P1 = 0.4, P2 = 0.7;
+        function phaseOf(p) {
+            if (p < P1) return { phase: 1, t: p / P1 };
+            if (p <= P2) return { phase: 2, t: (p - P1) / (P2 - P1) };
+            return { phase: 3, t: (p - P2) / (1 - P2) };
+        }
+        const smooth = t => t * t * (3 - 2 * t);
+
+        // ---- State ----
+        let scene, camera, renderer, controls;
+        let progress = 0, isPlaying = false, playRAF = null, slideRAF = null;
+        let showFlame = true, showCatalyst = true, showLabels = true;
+        const container = document.getElementById('canvas-container');
+        let atoms = {};       // id -> {el, mesh, start, end, cur, frag, flocal}
+        let fragments = {};    // id -> {catalyst, K0,K1,K2, curPos, curRot, sprite, light}
+        const bondList = [];     // {a,b,order,kind, cyls:[]}
+        let flameLight, flameSprite, transitionLight;
+        const electronSprites = [];
+
+        // ===== Geometry helpers =====
+        const geomCache = {};
+        function sphereGeom(r) { const k = r.toFixed(3);
+            return geomCache[k] || (geomCache[k] = new THREE.SphereGeometry(r, 28, 28)); }
+        const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 10);
+
+        function radialGlow(color) {
+            const c = document.createElement('canvas'); c.width = c.height = 64;
+            const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 30);
+            g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.2, color);
+            g.addColorStop(0.5, hexToRgba(color, 0.4)); g.addColorStop(1, 'rgba(0,0,0,0)');
+            x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+            return new THREE.CanvasTexture(c);
+        }
+
+        // ===== Build scene =====
+        function init3D() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(SCENE_BG);
+            scene.fog = new THREE.FogExp2(SCENE_BG, 0.022);
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+            camera.position.set(0, 4, 13);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; controls.dampingFactor = 0.05;
+            controls.maxDistance = 28; controls.minDistance = 3;
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+            const dir = new THREE.DirectionalLight(0xffffff, 1.05);
+            dir.position.set(5, 12, 8); dir.castShadow = true;
+            dir.shadow.mapSize.set(2048, 2048); dir.shadow.bias = -0.001; scene.add(dir);
+            const fill = new THREE.DirectionalLight(0x93c5fd, 0.35); fill.position.set(-6, -5, -4); scene.add(fill);
+
+            transitionLight = new THREE.PointLight(0xffcc00, 0, 14);
+            transitionLight.position.set(0, 0.4, 0); scene.add(transitionLight);
+
+            if (COND.flame) {
+                flameLight = new THREE.PointLight(0xff7a18, 0, 16);
+                flameLight.position.set(0, 0.5, 0); scene.add(flameLight);
+                flameSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+                    map: radialGlow('#ffae00'), color: 0xff8a00, transparent: true,
+                    blending: THREE.AdditiveBlending, opacity: 0 }));
+                flameSprite.scale.set(0.1, 0.1, 0.1); flameSprite.position.set(0, 0.5, 0); scene.add(flameSprite);
+            }
+
+            const grid = new THREE.GridHelper(34, 34, 0xcbd5e1, 0xe2e8f0); grid.position.y = -4.5; scene.add(grid);
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.ShadowMaterial({ opacity: 0.10 }));
+            floor.rotation.x = -Math.PI / 2; floor.position.y = -4.45; floor.receiveShadow = true; scene.add(floor);
+
+            buildAtoms(); buildFragments(); buildBonds(); buildElectrons();
+            window.addEventListener('resize', onResize);
+        }
+
+        // 原子描一圈深色边，在浅色背景上提升对比（教科书球棍图风）
+        const OUTLINE_MAT = new THREE.MeshBasicMaterial({ color: 0x334155, side: THREE.BackSide });
+        function buildAtoms() {
+            DATA.atoms.forEach(a => {
+                const mat = new THREE.MeshStandardMaterial({ color: a.color, roughness: 0.3, metalness: 0.05 });
+                const mesh = new THREE.Mesh(sphereGeom(a.radius), mat);
+                mesh.castShadow = mesh.receiveShadow = true; scene.add(mesh);
+                const outline = new THREE.Mesh(sphereGeom(a.radius), OUTLINE_MAT);
+                outline.scale.setScalar(1.07); mesh.add(outline);
+                atoms[a.id] = {
+                    el: a.el, mesh, radius: a.radius,
+                    start: new THREE.Vector3().fromArray(a.start),
+                    end: new THREE.Vector3().fromArray(a.end),
+                    cur: new THREE.Vector3().fromArray(a.start),
+                    frag: a.frag || null,
+                    flocal: a.flocal ? new THREE.Vector3().fromArray(a.flocal) : null,
+                };
+            });
+        }
+
+        function buildFragments() {
+            (DATA.fragments || []).forEach(f => {
+                const frag = { catalyst: !!f.catalyst, K0: f.K0, K1: f.K1, K2: f.K2,
+                    curPos: new THREE.Vector3(), curRot: [0, 0, 0] };
+                if (f.catalyst) {
+                    frag.sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+                        map: radialGlow('#0891b2'), color: 0x0891b2, transparent: true,
+                        blending: THREE.NormalBlending, opacity: 0.85 }));
+                    frag.sprite.scale.set(1.3, 1.3, 1.3); scene.add(frag.sprite);
+                    frag.light = new THREE.PointLight(0x22d3ee, 1.0, 4); scene.add(frag.light);
+                }
+                fragments[f.id] = frag;
+            });
+        }
+
+        function makeBondMat() {
+            return new THREE.MeshStandardMaterial({ color: BOND_COLOR, roughness: 0.4, metalness: 0.1,
+                transparent: true, opacity: 1, emissive: 0x000000, emissiveIntensity: 0 });
+        }
+        function buildBonds() {
+            const add = (b, kind) => {
+                const count = (b.order === 2) ? 2 : (b.order === 3 ? 3 : 1);
+                const cyls = [];
+                for (let i = 0; i < count; i++) {
+                    const m = new THREE.Mesh(cylGeo, makeBondMat()); m.castShadow = true; m.visible = false;
+                    scene.add(m); cyls.push(m);
+                }
+                bondList.push({ a: b.a, b: b.b, order: b.order, ionic: b.order === 'ionic', kind, cyls });
+            };
+            DATA.bonds.kept.forEach(b => add(b, 'kept'));
+            DATA.bonds.broken.forEach(b => add(b, 'broken'));
+            DATA.bonds.formed.forEach(b => add(b, 'formed'));
+        }
+
+        function buildElectrons() {
+            (DATA.electrons || []).forEach(() => {
+                const s = new THREE.Sprite(new THREE.SpriteMaterial({
+                    map: radialGlow('#0e7490'), color: 0x0891b2, transparent: true,
+                    blending: THREE.NormalBlending, opacity: 0 }));
+                s.scale.set(0.5, 0.5, 0.5); scene.add(s); electronSprites.push(s);
+            });
+        }
+
+        // ===== Position resolvers =====
+        function molBob(seed, time) {
+            let h = 0; for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 997;
+            const ph = h * 0.0063;
+            return new THREE.Vector3(Math.sin(time * 0.6 + ph) * 0.11,
+                Math.cos(time * 0.5 + ph) * 0.11, Math.sin(time * 0.4 + ph) * 0.09);
+        }
+        function morphPositions(p, time) {
+            const ph = phaseOf(p);
+            for (const id in atoms) {
+                const a = atoms[id];
+                if (ph.phase === 1) {
+                    a.cur.copy(a.start).add(molBob(a.frag || 'r', time));
+                } else if (ph.phase === 2) {
+                    const t = smooth(ph.t), amp = 0.1 * Math.sin(ph.t * Math.PI);
+                    a.cur.lerpVectors(a.start, a.end, t);
+                    a.cur.x += (Math.random() - 0.5) * amp;
+                    a.cur.y += (Math.random() - 0.5) * amp;
+                    a.cur.z += (Math.random() - 0.5) * amp;
+                } else {
+                    a.cur.copy(a.end).add(molBob(a.frag || 'p', time));
+                }
+                a.mesh.position.copy(a.cur);
+            }
+        }
+        const _eu = new THREE.Euler();
+        function lerpArr(A, B, t) { return [A[0]+(B[0]-A[0])*t, A[1]+(B[1]-A[1])*t, A[2]+(B[2]-A[2])*t]; }
+        function mechanismPositions(p, time) {
+            const ph = phaseOf(p);
+            for (const fid in fragments) {
+                const f = fragments[fid];
+                let pos, rot;
+                if (ph.phase === 1) { pos = lerpArr(f.K0.pos, f.K1.pos, ph.t); rot = lerpArr(f.K0.rot, f.K1.rot, ph.t); }
+                else if (ph.phase === 2) {
+                    const j = 0.045 * Math.sin(ph.t * Math.PI);
+                    pos = [f.K1.pos[0] + (Math.random()-0.5)*j, f.K1.pos[1] + (Math.random()-0.5)*j, f.K1.pos[2] + (Math.random()-0.5)*j];
+                    rot = f.K1.rot;
+                } else { pos = lerpArr(f.K1.pos, f.K2.pos, ph.t); rot = lerpArr(f.K1.rot, f.K2.rot, ph.t); }
+                f.curPos.set(pos[0], pos[1], pos[2]); f.curRot = rot;
+                if (f.sprite) { f.sprite.position.copy(f.curPos); f.light.position.copy(f.curPos);
+                    f.sprite.visible = f.light.visible = showCatalyst; }
+            }
+            for (const id in atoms) {
+                const a = atoms[id]; const f = fragments[a.frag];
+                if (!f || !a.flocal) { a.mesh.position.copy(a.cur); continue; }
+                _eu.set(f.curRot[0], f.curRot[1], f.curRot[2]);
+                a.cur.copy(a.flocal).applyEuler(_eu).add(f.curPos);
+                a.mesh.position.copy(a.cur);
+                if (f.catalyst) a.mesh.visible = showCatalyst;
+            }
+        }
+
+        // ===== Bonds =====
+        const _dir = new THREE.Vector3(), _mid = new THREE.Vector3(), _perp = new THREE.Vector3(),
+              _up = new THREE.Vector3(0, 1, 0);
+        function placeCyl(mesh, A, B, radius, opacity, color, emit, emitI) {
+            if (opacity <= 0.02) { mesh.visible = false; return; }
+            mesh.visible = true;
+            _dir.subVectors(B, A); const len = _dir.length();
+            mesh.scale.set(radius, len, radius);
+            _mid.addVectors(A, B).multiplyScalar(0.5); mesh.position.copy(_mid);
+            mesh.quaternion.setFromUnitVectors(_up, _dir.clone().normalize());
+            mesh.material.opacity = opacity; mesh.material.color.setHex(color);
+            mesh.material.emissive.setHex(emit); mesh.material.emissiveIntensity = emitI;
+        }
+        function drawBond(b, p) {
+            const A = atoms[b.a].cur, B = atoms[b.b].cur;
+            const ph = phaseOf(p);
+            let opacity = 1, color = BOND_COLOR, emit = 0x000000, emitI = 0, glow = false;
+            if (b.kind === 'broken') {
+                if (ph.phase === 1) opacity = 1;
+                else if (ph.phase === 2) { opacity = 1 - ph.t; glow = true; }
+                else opacity = 0;
+            } else if (b.kind === 'formed') {
+                if (ph.phase === 1) opacity = 0;
+                else if (ph.phase === 2) { opacity = ph.t; glow = true; }
+                else opacity = 1;
+            }
+            if (glow) {
+                const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.5;
+                if (b.kind === 'broken') { color = BROKEN_COLOR; emit = BROKEN_EMIT; }
+                else { color = FORMED_COLOR; emit = FORMED_EMIT; }
+                emitI = pulse;
+            }
+            const baseR = b.ionic ? 0.035 : (b.order === 2 || b.order === 3 ? 0.06 : 0.08);
+            const op = b.ionic ? opacity * 0.5 : opacity;
+            if (b.cyls.length === 1) {
+                placeCyl(b.cyls[0], A, B, glow ? baseR * 0.85 : baseR, op, color, emit, emitI);
+            } else {
+                _dir.subVectors(B, A).normalize();
+                _perp.set(-_dir.y, _dir.x, 0);
+                if (_perp.lengthSq() < 0.01) _perp.set(0, -_dir.z, _dir.y);
+                _perp.normalize().multiplyScalar(0.14);
+                if (b.cyls.length === 2) {
+                    placeCyl(b.cyls[0], A.clone().add(_perp), B.clone().add(_perp), baseR, op, color, emit, emitI);
+                    placeCyl(b.cyls[1], A.clone().sub(_perp), B.clone().sub(_perp), baseR, op, color, emit, emitI);
+                } else {
+                    placeCyl(b.cyls[0], A, B, baseR, op, color, emit, emitI);
+                    placeCyl(b.cyls[1], A.clone().add(_perp), B.clone().add(_perp), baseR, op, color, emit, emitI);
+                    placeCyl(b.cyls[2], A.clone().sub(_perp), B.clone().sub(_perp), baseR, op, color, emit, emitI);
+                }
+            }
+        }
+
+        // ===== Overlays =====
+        function updateFlame(p) {
+            if (!COND.flame) return;
+            const ph = phaseOf(p);
+            let intensity = 0;
+            if (ph.phase === 2) intensity = Math.sin(ph.t * Math.PI);
+            else if (ph.phase === 3) intensity = Math.max(0, 1 - ph.t) * 0.3;
+            if (!showFlame) intensity = 0;
+            const flick = 0.85 + Math.sin(Date.now() * 0.03) * 0.15;
+            flameLight.intensity = intensity * 6 * flick;
+            flameSprite.material.opacity = intensity * flick;
+            const s = 0.5 + intensity * 5.5 * flick; flameSprite.scale.set(s, s, s);
+            flameSprite.visible = showFlame && intensity > 0.01;
+        }
+        function updateTransitionGlow(p) {
+            const ph = phaseOf(p);
+            const on = COND.transitionGlow || (DATA.fragments || []).length;
+            transitionLight.intensity = (on && ph.phase === 2) ? Math.sin(ph.t * Math.PI) * 2.5 : 0;
+        }
+        function updateElectrons(p) {
+            const defs = DATA.electrons || []; if (!defs.length) return;
+            const ph = phaseOf(p);
+            defs.forEach((d, i) => {
+                const s = electronSprites[i]; if (!atoms[d.from] || !atoms[d.to]) return;
+                if (ph.phase === 2) {
+                    const t = smooth(ph.t);
+                    s.position.lerpVectors(atoms[d.from].cur, atoms[d.to].cur, t);
+                    s.position.y += Math.sin(ph.t * Math.PI) * 0.6;
+                    s.material.opacity = Math.sin(ph.t * Math.PI);
+                    s.visible = true;
+                } else { s.visible = false; }
+            });
+        }
+
+        // ===== Labels =====
+        const _v = new THREE.Vector3(), _camUp = new THREE.Vector3();
+        function buildLabels() {
+            const overlay = document.getElementById('labels-overlay');
+            (DATA.labels || []).forEach(l => {
+                const el = document.createElement('div');
+                el.id = 'lbl-' + l.id;
+                el.className = 'absolute text-white text-xs font-semibold px-2 py-1 rounded shadow-lg transition-opacity duration-300 transform -translate-x-1/2 -translate-y-full border';
+                const c = ({ red:'#ef4444', cyan:'#0891b2', blue:'#3b82f6', emerald:'#10b981', slate:'#475569',
+                    violet:'#8b5cf6', green:'#16a34a', sky:'#0ea5e9', orange:'#f97316' })[l.color] || ACC;
+                el.style.background = hexToRgba(c, 0.92); el.style.borderColor = hexToRgba(c, 1);
+                el.textContent = l.text; el.dataset.phase = l.phase;
+                overlay.appendChild(el); l._el = el; l._ids = l.atoms;
+            });
+        }
+        function updateLabels(p) {
+            const rect = container.getBoundingClientRect();
+            const reactantPhase = p < 0.55;
+            _camUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+            (DATA.labels || []).forEach(l => {
+                const show = showLabels && (l.phase === 'reactant' ? reactantPhase : !reactantPhase);
+                const el = l._el;
+                if (!show) { el.style.opacity = '0'; return; }
+                // Anchor above the molecule's topmost atom so the box never covers the bonds.
+                let sx = 0, topY = Infinity, n = 0;
+                for (const id of l._ids) {
+                    const a = atoms[id];
+                    _v.copy(a.cur).project(camera);
+                    if (_v.z > 1) continue;
+                    sx += (_v.x * 0.5 + 0.5) * rect.width;
+                    _v.copy(a.cur).addScaledVector(_camUp, a.radius).project(camera);
+                    topY = Math.min(topY, (_v.y * -0.5 + 0.5) * rect.height);
+                    n++;
+                }
+                if (!n) { el.style.opacity = '0'; return; }
+                el.style.opacity = '1';
+                el.style.left = (sx / n) + 'px';
+                el.style.top = (topY - 6) + 'px';
+            });
+        }
+
+        // ===== Energy diagram =====
+        function drawEnergy(p) {
+            const E = DATA.energy; if (!E) return;
+            const cv = document.getElementById('energy-canvas'), x = cv.getContext('2d');
+            const W = cv.width, H = cv.height, pad = 14;
+            x.clearRect(0, 0, W, H);
+            const y0 = 0.72, act = E.activation != null ? E.activation : 0.7, dH = E.deltaH != null ? E.deltaH : -0.4;
+            const yEnd = y0 + dH;
+            const peakX = 0.45, peak = Math.max(y0, yEnd) + act * 0.5 + 0.1;
+            const Y = v => pad + (1 - v) * (H - 2 * pad);
+            const X = u => pad + u * (W - 2 * pad);
+            // curve
+            x.strokeStyle = ACC; x.lineWidth = 2; x.beginPath();
+            for (let i = 0; i <= 60; i++) {
+                const u = i / 60; let yv;
+                if (u < peakX) { const k = u / peakX; yv = y0 + (peak - y0) * (k * k * (3 - 2 * k)); }
+                else { const k = (u - peakX) / (1 - peakX); yv = peak + (yEnd - peak) * (k * k * (3 - 2 * k)); }
+                const px = X(u), py = Y(yv); i ? x.lineTo(px, py) : x.moveTo(px, py);
+            }
+            x.stroke();
+            // marker
+            const u = Math.min(1, p); let yv;
+            if (u < peakX) { const k = u / peakX; yv = y0 + (peak - y0) * (k * k * (3 - 2 * k)); }
+            else { const k = (u - peakX) / (1 - peakX); yv = peak + (yEnd - peak) * (k * k * (3 - 2 * k)); }
+            x.fillStyle = '#0f172a'; x.beginPath(); x.arc(X(u), Y(yv), 3.5, 0, 7); x.fill();
+            // baseline labels
+            x.fillStyle = '#64748b'; x.font = '9px sans-serif';
+            x.fillText(E.reactantLabel || '反应物', pad, Y(y0) - 4);
+            x.fillText(E.productLabel || '产物', W - pad - 26, Y(yEnd) - 4);
+        }
+
+        // ===== Render loop =====
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            const p = progress / 100, time = Date.now() * 0.001;
+            const pct = Math.round(progress);
+            document.getElementById('progress-readout').textContent = pct + '%';
+            document.getElementById('viewport-progress').style.width = pct + '%';
+
+            if (META.engine === 'mechanism') mechanismPositions(p, time); else morphPositions(p, time);
+            bondList.forEach(b => drawBond(b, p));
+            updateFlame(p); updateTransitionGlow(p); updateElectrons(p);
+            updateLabels(p); drawEnergy(p);
+            updateStep(p);
+            renderer.render(scene, camera);
+        }
+
+        // ===== Stepper / explanation =====
+        let steps = DATA.steps || [];
+        const STEP_INACTIVE = 'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all duration-300 bg-white border-slate-300 text-slate-400';
+        function buildStepper() {
+            const wrap = document.getElementById('stepper');
+            steps.forEach((s, i) => {
+                const btn = document.createElement('button');
+                btn.className = 'flex flex-col items-center gap-2 cursor-pointer focus:outline-none';
+                btn.onclick = () => jumpToStep(i + 1);
+                btn.innerHTML = `<span id="step-circle-${i+1}" class="${STEP_INACTIVE}">${i+1}</span>
+                    <span id="step-label-${i+1}" class="text-xs transition-colors duration-300 text-slate-400 max-w-[90px] text-center leading-tight">${s.title || ('步骤'+(i+1))}</span>`;
+                wrap.appendChild(btn);
+            });
+        }
+        let lastStep = -1;
+        function stepIndexFor(p) {
+            if (steps.length <= 1) return 1;
+            if (p < P1) return 1;
+            if (p <= P2) return Math.min(2, steps.length);
+            return steps.length;
+        }
+        function updateStep(p) {
+            const n = stepIndexFor(p);
+            if (n === lastStep) return; lastStep = n;
+            for (let i = 1; i <= steps.length; i++) {
+                const circle = document.getElementById('step-circle-' + i);
+                const label = document.getElementById('step-label-' + i);
+                const on = i <= n;
+                circle.style.background = on ? ACC : '';
+                circle.style.borderColor = on ? ACC : '';
+                circle.className = on
+                    ? 'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all duration-300 text-white shadow-lg'
+                    : STEP_INACTIVE;
+                label.className = 'text-xs transition-colors duration-300 max-w-[90px] text-center leading-tight ' +
+                    (on ? 'text-slate-800 font-semibold' : 'text-slate-400');
+            }
+            document.getElementById('step-progress-line').style.width = (((n - 1) / Math.max(1, steps.length - 1)) * 100) + '%';
+            const s = steps[n - 1] || {};
+            document.getElementById('step-title-text').textContent = `${n}. ${s.title || ''}`;
+            document.getElementById('explanation-text').innerHTML = s.html || '';
+        }
+
+        // ===== Controls =====
+        function jumpToStep(n) {
+            const target = steps.length <= 1 ? 0 : Math.round(((n - 1) / (steps.length - 1)) * 100);
+            animateSliderTo(target);
+        }
+        function animateSliderTo(target) {
+            if (isPlaying) togglePlay();
+            if (slideRAF) cancelAnimationFrame(slideRAF);
+            const slider = document.getElementById('reaction-slider');
+            (function step() {
+                const cur = parseFloat(slider.value), diff = target - cur;
+                if (Math.abs(diff) < 2) { slider.value = target; progress = target; }
+                else { const nx = cur + Math.sign(diff) * 3; slider.value = nx; progress = nx; slideRAF = requestAnimationFrame(step); }
+            })();
+        }
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            const btn = document.getElementById('play-btn'), txt = document.getElementById('play-text');
+            if (isPlaying) {
+                if (progress >= 100) { progress = 0; document.getElementById('reaction-slider').value = 0; }
+                txt.textContent = UI.pause || '暂停演示';
+                btn.firstElementChild.innerHTML = `<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>`;
+                playLoop();
+            } else {
+                txt.textContent = UI.play || '自动演示';
+                btn.firstElementChild.innerHTML = `<path d="M8 5v14l11-7z"/>`;
+                if (playRAF) { cancelAnimationFrame(playRAF); playRAF = null; }
+            }
+        }
+        function playLoop() {
+            if (!isPlaying) return;
+            progress += 0.5;
+            if (progress >= 100) { progress = 100; document.getElementById('reaction-slider').value = 100; togglePlay(); return; }
+            document.getElementById('reaction-slider').value = progress;
+            playRAF = requestAnimationFrame(playLoop);
+        }
+        function onResize() {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        // ===== Static UI from data =====
+        function paintStaticUI() {
+            // 清空上次反应的守恒计数与图例（防跨切换累积）
+            document.getElementById('conservation-chips').innerHTML = '';
+            document.getElementById('legend-grid').innerHTML = '';
+            document.title = (META.title || '化学反应') + ' · 微观3D演示';
+            document.getElementById('page-title').textContent = (META.pageTitle || META.title || '化学反应');
+            document.getElementById('eq-count').textContent = '共 ' + ALL.length + ' 个反应，当前 ' + (curIdx + 1) + '/' + ALL.length;
+            document.documentElement.lang = META.language || 'zh-CN';
+            document.getElementById('title').textContent = META.title || '';
+            document.getElementById('subtitle').textContent = META.subtitle || '';
+            document.getElementById('equation-container').innerHTML = '$$' + (META.equation || '') + '$$';
+            document.getElementById('drag-hint').textContent = UI.drag || '拖拽旋转 · 滚轮缩放 · 右键平移';
+            document.getElementById('progress-label').textContent = UI.progress || '反应进度';
+            document.getElementById('slider-hint').textContent = UI.hint || '';
+            document.getElementById('play-text').textContent = UI.play || '自动演示';
+            document.getElementById('legend-label').textContent = UI.legend || '原子图例';
+            document.getElementById('conservation-label').textContent = UI.conservation || '原子守恒';
+            document.getElementById('labels-toggle-text').textContent = UI.labels || '标签';
+            document.getElementById('labels-toggle').title = UI.labelsHint || '显示 / 隐藏标签';
+            // conservation chips
+            const chips = document.getElementById('conservation-chips');
+            const colorOf = {}; (DATA.legend || []).forEach(l => colorOf[l.el] = l.color);
+            Object.entries(DATA.elementCounts || {}).forEach(([el, n]) => {
+                const d = document.createElement('div');
+                d.className = 'flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-100 border border-slate-200 text-xs';
+                d.innerHTML = `<span class="w-3 h-3 rounded-full inline-block" style="background:${colorOf[el]||'#94a3b8'}"></span>
+                    <span class="text-slate-700 font-mono">${el} ×${n}</span>`;
+                chips.appendChild(d);
+            });
+            // legend
+            const lg = document.getElementById('legend-grid');
+            (DATA.legend || []).forEach(l => {
+                const d = document.createElement('div'); d.className = 'flex items-center space-x-2 text-slate-700';
+                d.innerHTML = `<span class="w-3.5 h-3.5 rounded-full inline-block shrink-0" style="background:${l.color}"></span><span>${l.name} ${l.el}</span>`;
+                lg.appendChild(d);
+            });
+            const tf = document.getElementById('toggle-flame');
+            if (COND.flame) { tf.classList.remove('hidden'); tf.classList.add('flex'); }
+            else { tf.classList.add('hidden'); tf.classList.remove('flex'); }
+            const tc = document.getElementById('toggle-catalyst');
+            if (COND.catalyst) {
+                tc.classList.remove('hidden'); tc.classList.add('flex');
+                document.getElementById('catalyst-title').textContent = (COND.catalyst.label || '催化剂');
+            } else { tc.classList.add('hidden'); tc.classList.remove('flex'); }
+            const ep = document.getElementById('energy-panel');
+            if (DATA.energy) {
+                ep.classList.remove('hidden');
+                document.getElementById('energy-title').textContent = UI.energy || '能量·反应进程';
+            } else { ep.classList.add('hidden'); }
+        }
+
+        function bindEvents() {
+            const slider = document.getElementById('reaction-slider');
+            slider.oninput = e => {
+                if (isPlaying) togglePlay();
+                if (slideRAF) { cancelAnimationFrame(slideRAF); slideRAF = null; }
+                progress = parseFloat(e.target.value);
+            }
+            document.getElementById('play-btn').onclick = togglePlay;
+            document.getElementById('reset-btn').onclick = () => {
+                if (isPlaying) togglePlay();
+                if (slideRAF) { cancelAnimationFrame(slideRAF); slideRAF = null; }
+                progress = 0; slider.value = 0;
+                camera.position.set(0, 4, 13); controls.target.set(0, 0, 0);
+            }
+            document.getElementById('prev-btn').onclick = () => jumpToStep(Math.max(1, stepIndexFor(progress / 100) - 1));
+            document.getElementById('next-btn').onclick = () => jumpToStep(Math.min(steps.length, stepIndexFor(progress / 100) + 1));
+            const ft = document.getElementById('flame-toggle');
+            if (ft) ft.onchange = e => showFlame = e.target.checked;
+            const ct = document.getElementById('catalyst-toggle');
+            if (ct) ct.onchange = e => showCatalyst = e.target.checked;
+            const EYE = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>`;
+            const EYE_OFF = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88"/>`;
+            const lt = document.getElementById('labels-toggle'), lti = document.getElementById('labels-toggle-icon');
+            lt.onclick = () => {
+                showLabels = !showLabels;
+                lti.innerHTML = showLabels ? EYE : EYE_OFF;
+                lt.classList.toggle('text-slate-400', !showLabels);
+                lt.classList.toggle('text-slate-600', showLabels);
+            }
+        }
+
+        
+        // ===== 多反应卡片切换 =====
+        function disposeScene() {
+            // 无条件清空标签层（即使 renderer 已为 null，也清掉残留标签）
+            const _lo = document.getElementById('labels-overlay');
+            if (_lo) _lo.innerHTML = '';
+            if (renderer) {
+                cancelAnimationFrame(playRAF); playRAF = null;
+                cancelAnimationFrame(slideRAF); slideRAF = null;
+                window.removeEventListener('resize', onResize);
+                renderer.dispose();
+                if (renderer.domElement && renderer.domElement.parentNode)
+                    renderer.domElement.parentNode.removeChild(renderer.domElement);
+                scene = null; renderer = null; controls = null;
+                atoms = {}; fragments = {}; bondList.length = 0;
+                electronSprites.length = 0;
+                flameLight = null; flameSprite = null; transitionLight = null;
+            }
+        }
+        function switchReaction(idx) {
+            if (idx === curIdx && DATA) return;
+            curIdx = idx; DATA = ALL[idx];
+            META = DATA.meta; COND = DATA.conditions || {}; UI = DATA.ui || {};
+            ACC = ACCENTS[META.accent] || ACCENTS.indigo;
+            steps = DATA.steps || [];
+            disposeScene();
+            progress = 0; isPlaying = false;
+            showFlame = true; showCatalyst = true;
+            const _ft = document.getElementById('flame-toggle');
+            if (_ft) _ft.checked = true;
+            const _ct = document.getElementById('catalyst-toggle');
+            if (_ct) _ct.checked = true;
+            document.getElementById('reaction-slider').value = 0;
+            document.getElementById('play-text').textContent = UI.play || '自动演示';
+            // 重设 accent 变量（META/COND/UI 是 const，用重建函数内变量）
+            applyAccent();
+            paintStaticUI();
+            const st = document.getElementById('stepper'); st.innerHTML = '';
+            lastStep = -1;
+            document.getElementById('explanation-text').innerHTML = '加载中...';
+            buildStepper(); init3D(); buildLabels(); bindEvents();
+            updateStep(0); lastStep = -1;
+            if (typeof renderMathInElement === 'function') {
+                renderMathInElement(document.body, { delimiters: [
+                    { left: '$$', right: '$$', display: true }, { left: '$', right: '$', display: false }] });
+            }
+            // 高亮当前卡片
+            document.querySelectorAll('#card-row > button').forEach((b, i) => {
+                b.classList.toggle('card-active', i === idx);
+                b.classList.toggle('card-idle', i !== idx);
+            });
+        }
+        function applyAccent() {
+            const m = ALL[curIdx].meta, u = ALL[curIdx].ui || {};
+            const acc = ACCENTS[m.accent] || ACCENTS.indigo;
+            document.documentElement.style.setProperty('--accent', acc);
+            document.documentElement.style.setProperty('--accent-soft', hexToRgba(acc, 0.25));
+        }
+        function buildCards() {
+            const row = document.getElementById('card-row');
+            ALL.forEach((d, i) => {
+                const b = document.createElement('button');
+                b.className = 'card-idle px-3 py-2 rounded-xl text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap';
+                b.textContent = d.card || ('反应 ' + (i + 1));
+                b.onclick = () => switchReaction(i);
+                row.appendChild(b);
+            });
+        }
+        window.onload = function () {
+            buildCards();
+            paintStaticUI(); buildStepper(); init3D(); buildLabels(); bindEvents();
+            updateStep(0); lastStep = -1;
+            animate();
+            if (typeof renderMathInElement === 'function') {
+                renderMathInElement(document.body, { delimiters: [
+                    { left: '$$', right: '$$', display: true }, { left: '$', right: '$', display: false }] });
+            }
+        };
+
+    })();
+    </script>
+</body>
+</html>

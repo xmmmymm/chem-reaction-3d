@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>化学反应微观 3D 演示</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
+    <style>
+        :root { --accent: #6366f1; --accent-soft: rgba(99,102,241,0.25); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #e2e8f0; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .acc-text { color: var(--accent); }
+        .acc-bg { background: var(--accent); }
+        .acc-grad { background: linear-gradient(90deg, var(--accent-soft), var(--accent)); }
+        input[type=range].acc-range { accent-color: var(--accent); }
+        .acc-ring:focus { outline: none; box-shadow: 0 0 0 2px var(--accent); }
+        .play-btn { background: var(--accent); }
+        .play-btn:hover { filter: brightness(1.08); }
+
+        .card-active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .card-idle { background: #fff; color: #64748b; border-color: #e2e8f0; }
+        .card-idle:hover { border-color: var(--accent); color: var(--accent); }
+
+    </style>
+</head>
+<body class="bg-[#eef2f7] text-slate-900 min-h-screen flex flex-col overflow-hidden font-sans">
+<div class="shrink-0 bg-white border-b border-slate-200">
+        <div class="px-6 pt-4 pb-2 flex items-center justify-between">
+            <h1 class="text-base font-bold text-slate-900 tracking-wide" id="page-title">化学反应 3D 虚拟实验室</h1>
+            <span class="text-[11px] text-slate-400" id="eq-count"></span>
+        </div>
+        <div class="px-4 pb-3 overflow-x-auto" id="card-bar">
+            <div class="flex gap-2 min-w-max" id="card-row"></div>
+        </div>
+    </div>
+    <main class="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+
+        <!-- 3D Viewport -->
+        <div class="flex-1 relative bg-[#eef2f7] flex flex-col min-h-[45vh]">
+            <div id="labels-overlay" class="absolute inset-0 pointer-events-none z-20 overflow-hidden"></div>
+            <div id="canvas-container" class="flex-1 w-full h-full cursor-grab active:cursor-grabbing"></div>
+
+            <!-- Labels show / hide toggle -->
+            <button id="labels-toggle" class="absolute top-4 left-4 z-30 bg-white/85 border border-slate-200 backdrop-blur text-xs pl-2.5 pr-3 py-1.5 rounded-lg text-slate-600 shadow-sm hover:bg-white transition-colors flex items-center gap-1.5 cursor-pointer select-none" title="显示 / 隐藏标签">
+                <svg id="labels-toggle-icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                <span id="labels-toggle-text">标签</span>
+            </button>
+
+            <!-- Energy diagram (optional) -->
+            <div id="energy-panel" class="absolute top-4 right-4 hidden bg-white/85 border border-slate-200 backdrop-blur rounded-xl p-3 select-none shadow-sm">
+                <div class="text-[10px] font-bold text-slate-500 tracking-wider uppercase mb-1" id="energy-title">能量·反应进程</div>
+                <canvas id="energy-canvas" width="200" height="110"></canvas>
+            </div>
+
+            <div class="absolute bottom-4 left-4 bg-white/85 border border-slate-200 backdrop-blur text-xs px-3 py-2 rounded-lg text-slate-500 select-none shadow-sm">
+                <div class="flex items-center space-x-1.5">
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
+                    <span id="drag-hint">拖拽旋转 · 滚轮缩放 · 右键平移</span>
+                </div>
+            </div>
+            <div class="absolute bottom-0 left-0 right-0 h-1 bg-slate-200">
+                <div id="viewport-progress" class="h-full acc-grad" style="width:0%"></div>
+            </div>
+        </div>
+
+        <!-- Right panel -->
+        <div class="w-full lg:w-[480px] shrink-0 bg-white border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col overflow-y-auto">
+
+            <div class="p-6 border-b border-slate-200 bg-slate-50">
+                <h1 id="title" class="text-lg font-bold tracking-wide text-slate-900">化学反应 3D 虚拟实验室</h1>
+                <p id="subtitle" class="text-xs acc-text mt-1"></p>
+                <div id="equation-container" class="bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 mt-4 text-sm overflow-x-auto"></div>
+            </div>
+
+            <!-- Stepper -->
+            <div class="p-6 border-b border-slate-200 bg-slate-50">
+                <div class="relative">
+                    <div class="absolute top-4 left-5 right-5 h-0.5 bg-slate-200">
+                        <div id="step-progress-line" class="h-full acc-bg transition-all duration-300" style="width:0%"></div>
+                    </div>
+                    <div id="stepper" class="relative flex justify-between"></div>
+                </div>
+
+                <div class="mt-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <span id="progress-label" class="text-[11px] font-bold text-slate-500 tracking-wider uppercase">反应进度</span>
+                        <span id="progress-readout" class="text-xs font-mono font-bold acc-text tabular-nums">0%</span>
+                    </div>
+                    <input type="range" id="reaction-slider" min="0" max="100" value="0" class="acc-range acc-ring w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                    <p id="slider-hint" class="text-[11px] text-slate-400 mt-2 leading-relaxed"></p>
+                </div>
+
+                <div class="flex items-center gap-2 mt-4">
+                    <button id="prev-btn" class="p-2.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-slate-600 transition-colors cursor-pointer" title="上一步">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                    </button>
+                    <button id="play-btn" class="play-btn flex-1 px-4 py-2.5 text-white rounded-lg flex items-center justify-center space-x-1.5 transition-colors shadow-lg cursor-pointer">
+                        <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        <span id="play-text">自动演示</span>
+                    </button>
+                    <button id="next-btn" class="p-2.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-slate-600 transition-colors cursor-pointer" title="下一步">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </button>
+                    <button id="reset-btn" class="p-2.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg transition-colors cursor-pointer" title="复位">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-6 flex-1 space-y-4">
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <h2 class="text-base font-bold text-slate-900 mb-3 flex items-center gap-2">
+                        <svg class="w-4 h-4 acc-text shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        <span id="step-title-text">—</span>
+                    </h2>
+                    <p id="explanation-text" class="text-sm text-slate-700 leading-relaxed min-h-[140px]">加载中...</p>
+                </div>
+
+                <!-- Conservation counter -->
+                <div id="conservation-panel" class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[11px] font-bold text-slate-500 tracking-wider uppercase" id="conservation-label">原子守恒</span>
+                        <span class="text-[10px] text-emerald-600" id="conservation-note">反应前后不变</span>
+                    </div>
+                    <div id="conservation-chips" class="flex flex-wrap gap-2 mt-3"></div>
+                </div>
+
+                <!-- Overlay toggles (flame / catalyst) -->
+                <div id="toggle-flame" class="hidden p-4 rounded-xl bg-amber-50 border border-amber-200 items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12.963 2.286a.75.75 0 00-1.071-.136 9.742 9.742 0 00-3.539 6.177 7.547 7.547 0 01-1.705-1.715.75.75 0 00-1.152-.082A9 9 0 1015.68 4.534a7.46 7.46 0 01-2.717-2.248z"/></svg>
+                        </div>
+                        <div><h4 class="text-sm font-bold text-slate-800" id="flame-title">燃烧火焰与高温</h4>
+                             <p class="text-xs text-amber-700" id="flame-sub">显示反应放出的热与光</p></div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input type="checkbox" id="flame-toggle" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-300 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
+                </div>
+
+                <div id="toggle-catalyst" class="hidden p-4 rounded-xl bg-slate-100 border border-slate-200 items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style="background: var(--accent-soft); color: var(--accent)">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        </div>
+                        <div><h4 class="text-sm font-bold text-slate-800" id="catalyst-title">催化剂</h4>
+                             <p class="text-xs acc-text" id="catalyst-sub">显示催化剂如何参与反应</p></div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input type="checkbox" id="catalyst-toggle" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-300 rounded-full peer peer-checked:bg-[color:var(--accent)] peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                    </label>
+                </div>
+
+                <!-- Atom legend -->
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <span class="text-[11px] font-bold text-slate-500 tracking-wider uppercase" id="legend-label">原子图例</span>
+                    <div id="legend-grid" class="grid grid-cols-2 gap-2.5 mt-3 text-xs"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+    const ALL = [{"meta": {"title": "必修1.md · 六、铁及其化合物", "subtitle": "", "language": "zh-CN", "category": "inorganic", "accent": "indigo", "engine": "morph", "equation": "\\mathrm{3Fe + 4H_2O(g) \\xlongequal{高温} Fe_3O_4 + 4H_2}", "pageTitle": "必修1 · 六、铁及其化合物"}, "conditions": {"text": "高温"}, "atoms": [{"id": "H1", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-0.7591, 1.1877, 0.0], "end": [-3.85, 0.6, 0.0], "rmol": "H2O#1", "pmol": "H2#1"}, {"id": "H2", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [0.7591, 1.1877, 0.0], "end": [-2.95, 0.6, 0.0], "rmol": "H2O#1", "pmol": "H2#1"}, {"id": "H3", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [2.6409, -0.0123, 0.0], "end": [-0.45, -0.6, 0.0], "rmol": "H2O#2", "pmol": "H2#2"}, {"id": "H4", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [4.1591, -0.0123, 0.0], "end": [0.45, -0.6, 0.0], "rmol": "H2O#2", "pmol": "H2#2"}, {"id": "H5", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [6.0409, 1.1877, 0.0], "end": [2.95, 0.6, 0.0], "rmol": "H2O#3", "pmol": "H2#3"}, {"id": "H6", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [7.5591, 1.1877, 0.0], "end": [3.85, 0.6, 0.0], "rmol": "H2O#3", "pmol": "H2#3"}, {"id": "H7", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [9.4409, -0.0123, 0.0], "end": [6.35, -0.6, 0.0], "rmol": "H2O#4", "pmol": "H2#4"}, {"id": "H8", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [10.9591, -0.0123, 0.0], "end": [7.25, -0.6, 0.0], "rmol": "H2O#4", "pmol": "H2#4"}, {"id": "Fe1", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [-10.2, -0.6, 0.0], "end": [-6.8, -0.6, 0.0], "rmol": "Fe#1", "pmol": "Fe_3O_4#1"}, {"id": "Fe2", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [-6.8, 0.6, 0.0], "end": [-6.8, -0.6, 0.0], "rmol": "Fe#2", "pmol": "Fe_3O_4#1"}, {"id": "Fe3", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [-3.4, -0.6, 0.0], "end": [-6.8, -0.6, 0.0], "rmol": "Fe#3", "pmol": "Fe_3O_4#1"}, {"id": "O1", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [0.0, 0.6, 0.0], "end": [-6.8, -0.6, 0.0], "rmol": "H2O#1", "pmol": "Fe_3O_4#1"}, {"id": "O2", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [3.4, -0.6, 0.0], "end": [-6.8, -0.6, 0.0], "rmol": "H2O#2", "pmol": "Fe_3O_4#1"}, {"id": "O3", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [6.8, 0.6, 0.0], "end": [-6.8, -0.6, 0.0], "rmol": "H2O#3", "pmol": "Fe_3O_4#1"}, {"id": "O4", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [10.2, -0.6, 0.0], "end": [-6.8, -0.6, 0.0], "rmol": "H2O#4", "pmol": "Fe_3O_4#1"}], "bonds": {"before": [{"a": "O1", "b": "H2", "order": 1}, {"a": "O1", "b": "H1", "order": 1}, {"a": "O2", "b": "H4", "order": 1}, {"a": "O2", "b": "H3", "order": 1}, {"a": "O3", "b": "H6", "order": 1}, {"a": "O3", "b": "H5", "order": 1}, {"a": "O4", "b": "H8", "order": 1}, {"a": "O4", "b": "H7", "order": 1}], "after": [{"a": "H1", "b": "H2", "order": 1}, {"a": "H3", "b": "H4", "order": 1}, {"a": "H5", "b": "H6", "order": 1}, {"a": "H7", "b": "H8", "order": 1}], "broken": [{"a": "O1", "b": "H2", "order": 1}, {"a": "O1", "b": "H1", "order": 1}, {"a": "O2", "b": "H4", "order": 1}, {"a": "O2", "b": "H3", "order": 1}, {"a": "O3", "b": "H6", "order": 1}, {"a": "O3", "b": "H5", "order": 1}, {"a": "O4", "b": "H8", "order": 1}, {"a": "O4", "b": "H7", "order": 1}], "formed": [{"a": "H1", "b": "H2", "order": 1}, {"a": "H3", "b": "H4", "order": 1}, {"a": "H5", "b": "H6", "order": 1}, {"a": "H7", "b": "H8", "order": 1}], "kept": []}, "labels": [{"id": "reactant-Fe#1", "text": "铁 (Fe)", "color": "slate", "phase": "reactant", "atoms": ["Fe1"]}, {"id": "reactant-Fe#2", "text": "铁 (Fe)", "color": "slate", "phase": "reactant", "atoms": ["Fe2"]}, {"id": "reactant-Fe#3", "text": "铁 (Fe)", "color": "slate", "phase": "reactant", "atoms": ["Fe3"]}, {"id": "reactant-H2O#1", "text": "水 (H₂O)", "color": "cyan", "phase": "reactant", "atoms": ["H1", "H2", "O1"]}, {"id": "reactant-H2O#2", "text": "水 (H₂O)", "color": "cyan", "phase": "reactant", "atoms": ["H3", "H4", "O2"]}, {"id": "reactant-H2O#3", "text": "水 (H₂O)", "color": "cyan", "phase": "reactant", "atoms": ["H5", "H6", "O3"]}, {"id": "reactant-H2O#4", "text": "水 (H₂O)", "color": "cyan", "phase": "reactant", "atoms": ["H7", "H8", "O4"]}, {"id": "product-Fe_3O_4#1", "text": "四氧化三铁 (Fe_3O_4)", "color": "slate", "phase": "product", "atoms": ["Fe1", "Fe2", "Fe3", "O1", "O2", "O3", "O4"]}, {"id": "product-H2#1", "text": "氢气 (H₂)", "color": "sky", "phase": "product", "atoms": ["H1", "H2"]}, {"id": "product-H2#2", "text": "氢气 (H₂)", "color": "sky", "phase": "product", "atoms": ["H3", "H4"]}, {"id": "product-H2#3", "text": "氢气 (H₂)", "color": "sky", "phase": "product", "atoms": ["H5", "H6"]}, {"id": "product-H2#4", "text": "氢气 (H₂)", "color": "sky", "phase": "product", "atoms": ["H7", "H8"]}], "elementCounts": {"H": 8, "Fe": 3, "O": 4}, "legend": [{"el": "H", "color": "#f1f5f9", "name": "氢"}, {"el": "Fe", "color": "#f97316", "name": "铁"}, {"el": "O", "color": "#ef4444", "name": "氧"}], "steps": [{"title": "反应物靠近", "html": "<span class='text-slate-700 font-semibold'>Fe、H₂O(g)</span> 分子相互靠近。此时分子内原子保持原有连接，体系能量尚未发生变化。"}, {"title": "高温，旧键断裂", "html": "在<b>高温</b>条件下，反应物分子内的<b>化学键断裂</b>（动画中橙色虚线的键），原子被打散，处于不稳定的过渡状态，随即开始重新组合。"}, {"title": "生成产物", "html": "原子重新组合生成 <span class='text-emerald-700 font-semibold'>Fe₃O₄、H₂</span>，新键形成（绿色虚线的键）。反应前后原子种类与数目不变，符合<b>质量守恒</b>。"}], "fragments": [], "energy": null, "electrons": [], "ui": {"reactants": "反应物", "products": "产物", "progress": "反应进度", "play": "自动演示", "pause": "暂停演示", "reset": "复位", "prev": "上一步", "next": "下一步", "hint": "拖动滑块观察化学键的断裂、原子重组与守恒，或点击上方步骤跳转。", "drag": "拖拽旋转 · 滚轮缩放 · 右键平移", "legend": "原子图例", "conservation": "原子守恒", "energy": "能量·反应进程", "broken": "断裂的键", "formed": "新生成的键", "labels": "标签", "labelsHint": "显示 / 隐藏分子标签"}, "card": "3Fe + 4H₂O(气) =高温= Fe₃O₄ + 4H₂"}, {"meta": {"title": "必修1.md · 六、铁及其化合物", "subtitle": "", "language": "zh-CN", "category": "inorganic", "accent": "indigo", "engine": "morph", "equation": "\\mathrm{FeO + 2H^+ = Fe^{2+} + H_2O}", "pageTitle": "必修1 · 六、铁及其化合物"}, "conditions": {}, "atoms": [{"id": "Fe1", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [-4.2, -0.6, 0.0], "end": [-1.7, -0.6, 0.0], "rmol": "FeO#1", "pmol": "Fe^{2+}#1"}, {"id": "O1", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-2.6, -0.6, 0.0], "end": [1.7, 0.6, 0.0], "rmol": "FeO#1", "pmol": "H2O#1"}, {"id": "H1", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [0.0, 0.6, 0.0], "end": [0.9409, 1.1877, 0.0], "rmol": "H^+#1", "pmol": "H2O#1"}, {"id": "H2", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [3.4, -0.6, 0.0], "end": [2.4591, 1.1877, 0.0], "rmol": "H^+#2", "pmol": "H2O#1"}], "bonds": {"before": [{"a": "Fe1", "b": "O1", "order": "ionic"}], "after": [{"a": "O1", "b": "H2", "order": 1}, {"a": "O1", "b": "H1", "order": 1}], "broken": [{"a": "Fe1", "b": "O1", "order": "ionic"}], "formed": [{"a": "O1", "b": "H2", "order": 1}, {"a": "O1", "b": "H1", "order": 1}], "kept": []}, "labels": [{"id": "reactant-FeO#1", "text": "氧化亚铁 (FeO)", "color": "slate", "phase": "reactant", "atoms": ["Fe1", "O1"]}, {"id": "reactant-H^+#1", "text": "氢离子 (H^+)", "color": "slate", "phase": "reactant", "atoms": ["H1"]}, {"id": "reactant-H^+#2", "text": "氢离子 (H^+)", "color": "slate", "phase": "reactant", "atoms": ["H2"]}, {"id": "product-Fe^{2+}#1", "text": "亚铁离子 (Fe^{2+})", "color": "slate", "phase": "product", "atoms": ["Fe1"]}, {"id": "product-H2O#1", "text": "水 (H₂O)", "color": "cyan", "phase": "product", "atoms": ["O1", "H1", "H2"]}], "elementCounts": {"Fe": 1, "O": 1, "H": 2}, "legend": [{"el": "Fe", "color": "#f97316", "name": "铁"}, {"el": "O", "color": "#ef4444", "name": "氧"}, {"el": "H", "color": "#f1f5f9", "name": "氢"}], "steps": [{"title": "反应物靠近", "html": "<span class='text-slate-700 font-semibold'>FeO、H⁺</span> 分子相互靠近。此时分子内原子保持原有连接，体系能量尚未发生变化。"}, {"title": "反应发生，旧键断裂", "html": "在<b>反应发生</b>条件下，反应物分子内的<b>化学键断裂</b>（动画中橙色虚线的键），原子被打散，处于不稳定的过渡状态，随即开始重新组合。"}, {"title": "生成产物", "html": "原子重新组合生成 <span class='text-emerald-700 font-semibold'>Fe²⁺、H₂O</span>，新键形成（绿色虚线的键）。反应前后原子种类与数目不变，符合<b>质量守恒</b>。"}], "fragments": [], "energy": null, "electrons": [], "ui": {"reactants": "反应物", "products": "产物", "progress": "反应进度", "play": "自动演示", "pause": "暂停演示", "reset": "复位", "prev": "上一步", "next": "下一步", "hint": "拖动滑块观察化学键的断裂、原子重组与守恒，或点击上方步骤跳转。", "drag": "拖拽旋转 · 滚轮缩放 · 右键平移", "legend": "原子图例", "conservation": "原子守恒", "energy": "能量·反应进程", "broken": "断裂的键", "formed": "新生成的键", "labels": "标签", "labelsHint": "显示 / 隐藏分子标签"}, "card": "FeO + 2H⁺ = Fe²⁺ + H₂O"}, {"meta": {"title": "必修1.md · 六、铁及其化合物", "subtitle": "", "language": "zh-CN", "category": "inorganic", "accent": "indigo", "engine": "morph", "equation": "\\mathrm{Fe_2O_3 + 6H^+ = 2Fe^{3+} + 3H_2O}", "pageTitle": "必修1 · 六、铁及其化合物"}, "conditions": {}, "atoms": [{"id": "Fe1", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [-11.2, -0.6, 0.0], "end": [-6.8, -0.6, 0.0], "rmol": "Fe2O3#1", "pmol": "Fe^{3+}#1"}, {"id": "Fe2", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [-9.2, -0.6, 0.0], "end": [-3.4, 0.6, 0.0], "rmol": "Fe2O3#1", "pmol": "Fe^{3+}#2"}, {"id": "O1", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-10.5, 0.1, 0.0], "end": [0.0, -0.6, 0.0], "rmol": "Fe2O3#1", "pmol": "H2O#1"}, {"id": "H1", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-6.8, 0.6, 0.0], "end": [-0.7591, -0.0123, 0.0], "rmol": "H^+#1", "pmol": "H2O#1"}, {"id": "H2", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-3.4, -0.6, 0.0], "end": [0.7591, -0.0123, 0.0], "rmol": "H^+#2", "pmol": "H2O#1"}, {"id": "O2", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-9.9, -1.3, 0.0], "end": [3.4, 0.6, 0.0], "rmol": "Fe2O3#1", "pmol": "H2O#2"}, {"id": "H3", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [0.0, 0.6, 0.0], "end": [2.6409, 1.1877, 0.0], "rmol": "H^+#3", "pmol": "H2O#2"}, {"id": "H4", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [3.4, -0.6, 0.0], "end": [4.1591, 1.1877, 0.0], "rmol": "H^+#4", "pmol": "H2O#2"}, {"id": "O3", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-10.2, -0.6, 1.0], "end": [6.8, -0.6, 0.0], "rmol": "Fe2O3#1", "pmol": "H2O#3"}, {"id": "H5", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [6.8, 0.6, 0.0], "end": [6.0409, -0.0123, 0.0], "rmol": "H^+#5", "pmol": "H2O#3"}, {"id": "H6", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [10.2, -0.6, 0.0], "end": [7.5591, -0.0123, 0.0], "rmol": "H^+#6", "pmol": "H2O#3"}], "bonds": {"before": [{"a": "Fe1", "b": "O1", "order": "ionic"}, {"a": "Fe1", "b": "O2", "order": "ionic"}, {"a": "Fe1", "b": "O3", "order": "ionic"}, {"a": "Fe2", "b": "O1", "order": "ionic"}, {"a": "Fe2", "b": "O2", "order": "ionic"}, {"a": "Fe2", "b": "O3", "order": "ionic"}], "after": [{"a": "O1", "b": "H2", "order": 1}, {"a": "O1", "b": "H1", "order": 1}, {"a": "O2", "b": "H4", "order": 1}, {"a": "O2", "b": "H3", "order": 1}, {"a": "O3", "b": "H6", "order": 1}, {"a": "O3", "b": "H5", "order": 1}], "broken": [{"a": "Fe1", "b": "O1", "order": "ionic"}, {"a": "Fe1", "b": "O2", "order": "ionic"}, {"a": "Fe1", "b": "O3", "order": "ionic"}, {"a": "Fe2", "b": "O1", "order": "ionic"}, {"a": "Fe2", "b": "O2", "order": "ionic"}, {"a": "Fe2", "b": "O3", "order": "ionic"}], "formed": [{"a": "O1", "b": "H2", "order": 1}, {"a": "O1", "b": "H1", "order": 1}, {"a": "O2", "b": "H4", "order": 1}, {"a": "O2", "b": "H3", "order": 1}, {"a": "O3", "b": "H6", "order": 1}, {"a": "O3", "b": "H5", "order": 1}], "kept": []}, "labels": [{"id": "reactant-Fe2O3#1", "text": "氧化铁 (Fe₂O₃)", "color": "orange", "phase": "reactant", "atoms": ["Fe1", "Fe2", "O1", "O2", "O3"]}, {"id": "reactant-H^+#1", "text": "氢离子 (H^+)", "color": "slate", "phase": "reactant", "atoms": ["H1"]}, {"id": "reactant-H^+#2", "text": "氢离子 (H^+)", "color": "slate", "phase": "reactant", "atoms": ["H2"]}, {"id": "reactant-H^+#3", "text": "氢离子 (H^+)", "color": "slate", "phase": "reactant", "atoms": ["H3"]}, {"id": "reactant-H^+#4", "text": "氢离子 (H^+)", "color": "slate", "phase": "reactant", "atoms": ["H4"]}, {"id": "reactant-H^+#5", "text": "氢离子 (H^+)", "color": "slate", "phase": "reactant", "atoms": ["H5"]}, {"id": "reactant-H^+#6", "text": "氢离子 (H^+)", "color": "slate", "phase": "reactant", "atoms": ["H6"]}, {"id": "product-Fe^{3+}#1", "text": "铁离子 (Fe^{3+})", "color": "slate", "phase": "product", "atoms": ["Fe1"]}, {"id": "product-Fe^{3+}#2", "text": "铁离子 (Fe^{3+})", "color": "slate", "phase": "product", "atoms": ["Fe2"]}, {"id": "product-H2O#1", "text": "水 (H₂O)", "color": "cyan", "phase": "product", "atoms": ["O1", "H1", "H2"]}, {"id": "product-H2O#2", "text": "水 (H₂O)", "color": "cyan", "phase": "product", "atoms": ["O2", "H3", "H4"]}, {"id": "product-H2O#3", "text": "水 (H₂O)", "color": "cyan", "phase": "product", "atoms": ["O3", "H5", "H6"]}], "elementCounts": {"Fe": 2, "O": 3, "H": 6}, "legend": [{"el": "Fe", "color": "#f97316", "name": "铁"}, {"el": "O", "color": "#ef4444", "name": "氧"}, {"el": "H", "color": "#f1f5f9", "name": "氢"}], "steps": [{"title": "反应物靠近", "html": "<span class='text-slate-700 font-semibold'>Fe₂O₃、H⁺</span> 分子相互靠近。此时分子内原子保持原有连接，体系能量尚未发生变化。"}, {"title": "反应发生，旧键断裂", "html": "在<b>反应发生</b>条件下，反应物分子内的<b>化学键断裂</b>（动画中橙色虚线的键），原子被打散，处于不稳定的过渡状态，随即开始重新组合。"}, {"title": "生成产物", "html": "原子重新组合生成 <span class='text-emerald-700 font-semibold'>Fe³⁺、H₂O</span>，新键形成（绿色虚线的键）。反应前后原子种类与数目不变，符合<b>质量守恒</b>。"}], "fragments": [], "energy": null, "electrons": [], "ui": {"reactants": "反应物", "products": "产物", "progress": "反应进度", "play": "自动演示", "pause": "暂停演示", "reset": "复位", "prev": "上一步", "next": "下一步", "hint": "拖动滑块观察化学键的断裂、原子重组与守恒，或点击上方步骤跳转。", "drag": "拖拽旋转 · 滚轮缩放 · 右键平移", "legend": "原子图例", "conservation": "原子守恒", "energy": "能量·反应进程", "broken": "断裂的键", "formed": "新生成的键", "labels": "标签", "labelsHint": "显示 / 隐藏分子标签"}, "card": "Fe₂O₃ + 6H⁺ = 2Fe³⁺ + 3H₂O"}, {"meta": {"title": "必修1.md · 六、铁及其化合物", "subtitle": "", "language": "zh-CN", "category": "inorganic", "accent": "indigo", "engine": "morph", "equation": "\\mathrm{FeSO_4 + 2NaOH = Fe(OH)_2 + Na_2SO_4}", "pageTitle": "必修1 · 六、铁及其化合物"}, "conditions": {}, "atoms": [{"id": "Fe1", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [-3.4, -0.6, 0.0], "end": [-1.7, -0.6, 0.0], "rmol": "FeSO_4#1", "pmol": "Fe(OH)_2#1"}, {"id": "O1", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-4.5718, 0.2943, 0.0231], "end": [-1.2111, -0.6, 0.0], "rmol": "FeSO_4#1", "pmol": "Fe(OH)_2#1"}, {"id": "O2", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-3.3694, -1.4019, 1.2367], "end": [-1.2111, -0.6, 0.0], "rmol": "FeSO_4#1", "pmol": "Fe(OH)_2#1"}, {"id": "H1", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-0.4889, 0.6, 0.0], "end": [-2.1889, -0.6, 0.0], "rmol": "NaOH#1", "pmol": "Fe(OH)_2#1"}, {"id": "H2", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [2.9111, -0.6, 0.0], "end": [-2.1889, -0.6, 0.0], "rmol": "NaOH#2", "pmol": "Fe(OH)_2#1"}, {"id": "Na1", "el": "Na", "color": "#a855f7", "radius": 0.58, "start": [0.0, 0.6, 0.0], "end": [1.7, 0.6, 0.0], "rmol": "NaOH#1", "pmol": "Na_2SO_4#1"}, {"id": "Na2", "el": "Na", "color": "#a855f7", "radius": 0.58, "start": [3.4, -0.6, 0.0], "end": [1.7, 0.6, 0.0], "rmol": "NaOH#2", "pmol": "Na_2SO_4#1"}, {"id": "O3", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-3.49, -1.4979, -1.1658], "end": [2.9312, 1.4055, -0.0941], "rmol": "FeSO_4#1", "pmol": "Na_2SO_4#1"}, {"id": "O4", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-2.1688, 0.2055, -0.0941], "end": [1.61, -0.2979, -1.1658], "rmol": "FeSO_4#1", "pmol": "Na_2SO_4#1"}, {"id": "O5", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [0.4889, 0.6, 0.0], "end": [1.7306, -0.2019, 1.2367], "rmol": "NaOH#1", "pmol": "Na_2SO_4#1"}, {"id": "O6", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [3.8889, -0.6, 0.0], "end": [0.5282, 1.4943, 0.0231], "rmol": "NaOH#2", "pmol": "Na_2SO_4#1"}, {"id": "S1", "el": "S", "color": "#eab308", "radius": 0.52, "start": [-3.4, -0.6, 0.0], "end": [1.7, 0.6, 0.0], "rmol": "FeSO_4#1", "pmol": "Na_2SO_4#1"}], "bonds": {"before": [{"a": "O1", "b": "S1", "order": 1}, {"a": "S1", "b": "O2", "order": 2}, {"a": "S1", "b": "O3", "order": 2}, {"a": "S1", "b": "O4", "order": 1}, {"a": "O5", "b": "H1", "order": 1}, {"a": "O6", "b": "H2", "order": 1}], "after": [{"a": "O2", "b": "H2", "order": 1}, {"a": "O1", "b": "H1", "order": 1}, {"a": "O6", "b": "S1", "order": 1}, {"a": "S1", "b": "O5", "order": 2}, {"a": "S1", "b": "O4", "order": 2}, {"a": "S1", "b": "O3", "order": 1}], "broken": [{"a": "O1", "b": "S1", "order": 1}, {"a": "S1", "b": "O2", "order": 2}, {"a": "S1", "b": "O3", "order": 2}, {"a": "S1", "b": "O4", "order": 1}, {"a": "O5", "b": "H1", "order": 1}, {"a": "O6", "b": "H2", "order": 1}], "formed": [{"a": "O2", "b": "H2", "order": 1}, {"a": "O1", "b": "H1", "order": 1}, {"a": "O6", "b": "S1", "order": 1}, {"a": "S1", "b": "O5", "order": 2}, {"a": "S1", "b": "O4", "order": 2}, {"a": "S1", "b": "O3", "order": 1}], "kept": []}, "labels": [{"id": "reactant-FeSO_4#1", "text": "硫酸亚铁 (FeSO_4)", "color": "slate", "phase": "reactant", "atoms": ["Fe1", "O1", "O2", "O3", "O4", "S1"]}, {"id": "reactant-NaOH#1", "text": "氢氧化钠 (NaOH)", "color": "slate", "phase": "reactant", "atoms": ["H1", "Na1", "O5"]}, {"id": "reactant-NaOH#2", "text": "氢氧化钠 (NaOH)", "color": "slate", "phase": "reactant", "atoms": ["H2", "Na2", "O6"]}, {"id": "product-Fe(OH)_2#1", "text": "氢氧化亚铁 (Fe(OH)_2)", "color": "slate", "phase": "product", "atoms": ["Fe1", "O1", "O2", "H1", "H2"]}, {"id": "product-Na_2SO_4#1", "text": "硫酸钠 (Na_2SO_4)", "color": "slate", "phase": "product", "atoms": ["Na1", "Na2", "O3", "O4", "O5", "O6", "S1"]}], "elementCounts": {"Fe": 1, "O": 6, "H": 2, "Na": 2, "S": 1}, "legend": [{"el": "Fe", "color": "#f97316", "name": "铁"}, {"el": "O", "color": "#ef4444", "name": "氧"}, {"el": "H", "color": "#f1f5f9", "name": "氢"}, {"el": "Na", "color": "#a855f7", "name": "钠"}, {"el": "S", "color": "#eab308", "name": "硫"}], "steps": [{"title": "反应物靠近", "html": "<span class='text-slate-700 font-semibold'>FeSO₄、NaOH</span> 分子相互靠近。此时分子内原子保持原有连接，体系能量尚未发生变化。"}, {"title": "反应发生，旧键断裂", "html": "在<b>反应发生</b>条件下，反应物分子内的<b>化学键断裂</b>（动画中橙色虚线的键），原子被打散，处于不稳定的过渡状态，随即开始重新组合。"}, {"title": "生成产物", "html": "原子重新组合生成 <span class='text-emerald-700 font-semibold'>Fe(OH)₂、Na₂SO₄</span>，新键形成（绿色虚线的键）。反应前后原子种类与数目不变，符合<b>质量守恒</b>。"}], "fragments": [], "energy": null, "electrons": [], "ui": {"reactants": "反应物", "products": "产物", "progress": "反应进度", "play": "自动演示", "pause": "暂停演示", "reset": "复位", "prev": "上一步", "next": "下一步", "hint": "拖动滑块观察化学键的断裂、原子重组与守恒，或点击上方步骤跳转。", "drag": "拖拽旋转 · 滚轮缩放 · 右键平移", "legend": "原子图例", "conservation": "原子守恒", "energy": "能量·反应进程", "broken": "断裂的键", "formed": "新生成的键", "labels": "标签", "labelsHint": "显示 / 隐藏分子标签"}, "card": "FeSO₄ + 2NaOH = Fe(OH)₂ + Na₂SO₄"}, {"meta": {"title": "必修1.md · 六、铁及其化合物", "subtitle": "", "language": "zh-CN", "category": "inorganic", "accent": "indigo", "engine": "morph", "equation": "\\mathrm{4Fe(OH)_2 + O_2 + 2H_2O = 4Fe(OH)_3}", "pageTitle": "必修1 · 六、铁及其化合物"}, "conditions": {}, "atoms": [{"id": "Fe1", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [-10.2, -0.6, 0.0], "end": [-5.1, -0.6, 0.0], "rmol": "Fe(OH)_2#1", "pmol": "Fe(OH)_3#1"}, {"id": "O1", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-9.7111, -0.6, 0.0], "end": [-4.6111, -0.6, 0.0], "rmol": "Fe(OH)_2#1", "pmol": "Fe(OH)_3#1"}, {"id": "O2", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-9.7111, -0.6, 0.0], "end": [-4.6111, -0.6, 0.0], "rmol": "Fe(OH)_2#1", "pmol": "Fe(OH)_3#1"}, {"id": "O3", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-6.3111, 0.6, 0.0], "end": [-4.6111, -0.6, 0.0], "rmol": "Fe(OH)_2#2", "pmol": "Fe(OH)_3#1"}, {"id": "H1", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-10.6889, -0.6, 0.0], "end": [-5.5889, -0.6, 0.0], "rmol": "Fe(OH)_2#1", "pmol": "Fe(OH)_3#1"}, {"id": "H2", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-10.6889, -0.6, 0.0], "end": [-5.5889, -0.6, 0.0], "rmol": "Fe(OH)_2#1", "pmol": "Fe(OH)_3#1"}, {"id": "H3", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-7.2889, 0.6, 0.0], "end": [-5.5889, -0.6, 0.0], "rmol": "Fe(OH)_2#2", "pmol": "Fe(OH)_3#1"}, {"id": "Fe2", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [-6.8, 0.6, 0.0], "end": [-1.7, 0.6, 0.0], "rmol": "Fe(OH)_2#2", "pmol": "Fe(OH)_3#2"}, {"id": "O4", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-6.3111, 0.6, 0.0], "end": [-1.2111, 0.6, 0.0], "rmol": "Fe(OH)_2#2", "pmol": "Fe(OH)_3#2"}, {"id": "O5", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-2.9111, -0.6, 0.0], "end": [-1.2111, 0.6, 0.0], "rmol": "Fe(OH)_2#3", "pmol": "Fe(OH)_3#2"}, {"id": "O6", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-2.9111, -0.6, 0.0], "end": [-1.2111, 0.6, 0.0], "rmol": "Fe(OH)_2#3", "pmol": "Fe(OH)_3#2"}, {"id": "H4", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-7.2889, 0.6, 0.0], "end": [-2.1889, 0.6, 0.0], "rmol": "Fe(OH)_2#2", "pmol": "Fe(OH)_3#2"}, {"id": "H5", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-3.8889, -0.6, 0.0], "end": [-2.1889, 0.6, 0.0], "rmol": "Fe(OH)_2#3", "pmol": "Fe(OH)_3#2"}, {"id": "H6", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-3.8889, -0.6, 0.0], "end": [-2.1889, 0.6, 0.0], "rmol": "Fe(OH)_2#3", "pmol": "Fe(OH)_3#2"}, {"id": "Fe3", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [-3.4, -0.6, 0.0], "end": [1.7, -0.6, 0.0], "rmol": "Fe(OH)_2#3", "pmol": "Fe(OH)_3#3"}, {"id": "O7", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [0.4889, 0.6, 0.0], "end": [2.1889, -0.6, 0.0], "rmol": "Fe(OH)_2#4", "pmol": "Fe(OH)_3#3"}, {"id": "O8", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [0.4889, 0.6, 0.0], "end": [2.1889, -0.6, 0.0], "rmol": "Fe(OH)_2#4", "pmol": "Fe(OH)_3#3"}, {"id": "O9", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [2.85, -0.6, 0.0], "end": [2.1889, -0.6, 0.0], "rmol": "O2#1", "pmol": "Fe(OH)_3#3"}, {"id": "H7", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-0.4889, 0.6, 0.0], "end": [1.2111, -0.6, 0.0], "rmol": "Fe(OH)_2#4", "pmol": "Fe(OH)_3#3"}, {"id": "H8", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-0.4889, 0.6, 0.0], "end": [1.2111, -0.6, 0.0], "rmol": "Fe(OH)_2#4", "pmol": "Fe(OH)_3#3"}, {"id": "H9", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [7.5591, 1.1877, 0.0], "end": [1.2111, -0.6, 0.0], "rmol": "H2O#1", "pmol": "Fe(OH)_3#3"}, {"id": "Fe4", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [0.0, 0.6, 0.0], "end": [5.1, 0.6, 0.0], "rmol": "Fe(OH)_2#4", "pmol": "Fe(OH)_3#4"}, {"id": "O10", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [3.95, -0.6, 0.0], "end": [5.5889, 0.6, 0.0], "rmol": "O2#1", "pmol": "Fe(OH)_3#4"}, {"id": "O11", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [6.8, 0.6, 0.0], "end": [5.5889, 0.6, 0.0], "rmol": "H2O#1", "pmol": "Fe(OH)_3#4"}, {"id": "O12", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [10.2, -0.6, 0.0], "end": [5.5889, 0.6, 0.0], "rmol": "H2O#2", "pmol": "Fe(OH)_3#4"}, {"id": "H10", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [6.0409, 1.1877, 0.0], "end": [4.6111, 0.6, 0.0], "rmol": "H2O#1", "pmol": "Fe(OH)_3#4"}, {"id": "H11", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [10.9591, -0.0123, 0.0], "end": [4.6111, 0.6, 0.0], "rmol": "H2O#2", "pmol": "Fe(OH)_3#4"}, {"id": "H12", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [9.4409, -0.0123, 0.0], "end": [4.6111, 0.6, 0.0], "rmol": "H2O#2", "pmol": "Fe(OH)_3#4"}], "bonds": {"before": [{"a": "O1", "b": "H1", "order": 1}, {"a": "O2", "b": "H2", "order": 1}, {"a": "O3", "b": "H3", "order": 1}, {"a": "O4", "b": "H4", "order": 1}, {"a": "O5", "b": "H5", "order": 1}, {"a": "O6", "b": "H6", "order": 1}, {"a": "O7", "b": "H7", "order": 1}, {"a": "O8", "b": "H8", "order": 1}, {"a": "O9", "b": "O10", "order": 2}, {"a": "O11", "b": "H9", "order": 1}, {"a": "O11", "b": "H10", "order": 1}, {"a": "O12", "b": "H11", "order": 1}, {"a": "O12", "b": "H12", "order": 1}], "after": [{"a": "O3", "b": "H3", "order": 1}, {"a": "O2", "b": "H2", "order": 1}, {"a": "O1", "b": "H1", "order": 1}, {"a": "O6", "b": "H6", "order": 1}, {"a": "O5", "b": "H5", "order": 1}, {"a": "O4", "b": "H4", "order": 1}, {"a": "O9", "b": "H9", "order": 1}, {"a": "O8", "b": "H8", "order": 1}, {"a": "O7", "b": "H7", "order": 1}, {"a": "O12", "b": "H12", "order": 1}, {"a": "O11", "b": "H11", "order": 1}, {"a": "O10", "b": "H10", "order": 1}], "broken": [{"a": "O9", "b": "O10", "order": 2}, {"a": "O11", "b": "H9", "order": 1}, {"a": "O11", "b": "H10", "order": 1}, {"a": "O12", "b": "H11", "order": 1}], "formed": [{"a": "O9", "b": "H9", "order": 1}, {"a": "O11", "b": "H11", "order": 1}, {"a": "O10", "b": "H10", "order": 1}], "kept": [{"a": "O3", "b": "H3", "order": 1}, {"a": "O2", "b": "H2", "order": 1}, {"a": "O1", "b": "H1", "order": 1}, {"a": "O6", "b": "H6", "order": 1}, {"a": "O5", "b": "H5", "order": 1}, {"a": "O4", "b": "H4", "order": 1}, {"a": "O8", "b": "H8", "order": 1}, {"a": "O7", "b": "H7", "order": 1}, {"a": "O12", "b": "H12", "order": 1}]}, "labels": [{"id": "reactant-Fe(OH)_2#1", "text": "氢氧化亚铁 (Fe(OH)_2)", "color": "slate", "phase": "reactant", "atoms": ["Fe1", "O1", "O2", "H1", "H2"]}, {"id": "reactant-Fe(OH)_2#2", "text": "氢氧化亚铁 (Fe(OH)_2)", "color": "slate", "phase": "reactant", "atoms": ["O3", "H3", "Fe2", "O4", "H4"]}, {"id": "reactant-Fe(OH)_2#3", "text": "氢氧化亚铁 (Fe(OH)_2)", "color": "slate", "phase": "reactant", "atoms": ["O5", "O6", "H5", "H6", "Fe3"]}, {"id": "reactant-Fe(OH)_2#4", "text": "氢氧化亚铁 (Fe(OH)_2)", "color": "slate", "phase": "reactant", "atoms": ["O7", "O8", "H7", "H8", "Fe4"]}, {"id": "reactant-O2#1", "text": "氧气 (O₂)", "color": "red", "phase": "reactant", "atoms": ["O9", "O10"]}, {"id": "reactant-H2O#1", "text": "水 (H₂O)", "color": "cyan", "phase": "reactant", "atoms": ["H9", "O11", "H10"]}, {"id": "reactant-H2O#2", "text": "水 (H₂O)", "color": "cyan", "phase": "reactant", "atoms": ["O12", "H11", "H12"]}, {"id": "product-Fe(OH)_3#1", "text": "氢氧化铁 (Fe(OH)_3)", "color": "slate", "phase": "product", "atoms": ["Fe1", "O1", "O2", "O3", "H1", "H2", "H3"]}, {"id": "product-Fe(OH)_3#2", "text": "氢氧化铁 (Fe(OH)_3)", "color": "slate", "phase": "product", "atoms": ["Fe2", "O4", "O5", "O6", "H4", "H5", "H6"]}, {"id": "product-Fe(OH)_3#3", "text": "氢氧化铁 (Fe(OH)_3)", "color": "slate", "phase": "product", "atoms": ["Fe3", "O7", "O8", "O9", "H7", "H8", "H9"]}, {"id": "product-Fe(OH)_3#4", "text": "氢氧化铁 (Fe(OH)_3)", "color": "slate", "phase": "product", "atoms": ["Fe4", "O10", "O11", "O12", "H10", "H11", "H12"]}], "elementCounts": {"Fe": 4, "O": 12, "H": 12}, "legend": [{"el": "Fe", "color": "#f97316", "name": "铁"}, {"el": "O", "color": "#ef4444", "name": "氧"}, {"el": "H", "color": "#f1f5f9", "name": "氢"}], "steps": [{"title": "反应物靠近", "html": "<span class='text-slate-700 font-semibold'>Fe(OH)₂、O₂、H₂O</span> 分子相互靠近。此时分子内原子保持原有连接，体系能量尚未发生变化。"}, {"title": "反应发生，旧键断裂", "html": "在<b>反应发生</b>条件下，反应物分子内的<b>化学键断裂</b>（动画中橙色虚线的键），原子被打散，处于不稳定的过渡状态，随即开始重新组合。"}, {"title": "生成产物", "html": "原子重新组合生成 <span class='text-emerald-700 font-semibold'>Fe(OH)₃</span>，新键形成（绿色虚线的键）。反应前后原子种类与数目不变，符合<b>质量守恒</b>。"}], "fragments": [], "energy": null, "electrons": [], "ui": {"reactants": "反应物", "products": "产物", "progress": "反应进度", "play": "自动演示", "pause": "暂停演示", "reset": "复位", "prev": "上一步", "next": "下一步", "hint": "拖动滑块观察化学键的断裂、原子重组与守恒，或点击上方步骤跳转。", "drag": "拖拽旋转 · 滚轮缩放 · 右键平移", "legend": "原子图例", "conservation": "原子守恒", "energy": "能量·反应进程", "broken": "断裂的键", "formed": "新生成的键", "labels": "标签", "labelsHint": "显示 / 隐藏分子标签"}, "card": "4Fe(OH)₂ + O₂ + 2H₂O = 4Fe(OH)₃"}, {"meta": {"title": "必修1.md · 六、铁及其化合物", "subtitle": "", "language": "zh-CN", "category": "inorganic", "accent": "indigo", "engine": "morph", "equation": "\\mathrm{2Fe(OH)_3 \\xlongequal{\\Delta} Fe_2O_3 + 3H_2O}", "pageTitle": "必修1 · 六、铁及其化合物"}, "conditions": {"text": "Δ"}, "atoms": [{"id": "Fe1", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [-1.7, -0.6, 0.0], "end": [-4.1, -0.6, 0.0], "rmol": "Fe(OH)_3#1", "pmol": "Fe2O3#1"}, {"id": "Fe2", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [1.7, 0.6, 0.0], "end": [-6.1, -0.6, 0.0], "rmol": "Fe(OH)_3#2", "pmol": "Fe2O3#1"}, {"id": "O1", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-1.2111, -0.6, 0.0], "end": [-5.1, -0.6, 1.0], "rmol": "Fe(OH)_3#1", "pmol": "Fe2O3#1"}, {"id": "O2", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-1.2111, -0.6, 0.0], "end": [-4.8, -1.3, 0.0], "rmol": "Fe(OH)_3#1", "pmol": "Fe2O3#1"}, {"id": "O3", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [-1.2111, -0.6, 0.0], "end": [-5.4, 0.1, 0.0], "rmol": "Fe(OH)_3#1", "pmol": "Fe2O3#1"}, {"id": "O4", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [2.1889, 0.6, 0.0], "end": [-1.7, 0.6, 0.0], "rmol": "Fe(OH)_3#2", "pmol": "H2O#1"}, {"id": "H1", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-2.1889, -0.6, 0.0], "end": [-2.4591, 1.1877, 0.0], "rmol": "Fe(OH)_3#1", "pmol": "H2O#1"}, {"id": "H2", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-2.1889, -0.6, 0.0], "end": [-0.9409, 1.1877, 0.0], "rmol": "Fe(OH)_3#1", "pmol": "H2O#1"}, {"id": "O5", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [2.1889, 0.6, 0.0], "end": [1.7, -0.6, 0.0], "rmol": "Fe(OH)_3#2", "pmol": "H2O#2"}, {"id": "H3", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [-2.1889, -0.6, 0.0], "end": [0.9409, -0.0123, 0.0], "rmol": "Fe(OH)_3#1", "pmol": "H2O#2"}, {"id": "H4", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [1.2111, 0.6, 0.0], "end": [2.4591, -0.0123, 0.0], "rmol": "Fe(OH)_3#2", "pmol": "H2O#2"}, {"id": "O6", "el": "O", "color": "#ef4444", "radius": 0.42, "start": [2.1889, 0.6, 0.0], "end": [5.1, 0.6, 0.0], "rmol": "Fe(OH)_3#2", "pmol": "H2O#3"}, {"id": "H5", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [1.2111, 0.6, 0.0], "end": [4.3409, 1.1877, 0.0], "rmol": "Fe(OH)_3#2", "pmol": "H2O#3"}, {"id": "H6", "el": "H", "color": "#f1f5f9", "radius": 0.25, "start": [1.2111, 0.6, 0.0], "end": [5.8591, 1.1877, 0.0], "rmol": "Fe(OH)_3#2", "pmol": "H2O#3"}], "bonds": {"before": [{"a": "O1", "b": "H1", "order": 1}, {"a": "O2", "b": "H2", "order": 1}, {"a": "O3", "b": "H3", "order": 1}, {"a": "O4", "b": "H4", "order": 1}, {"a": "O5", "b": "H5", "order": 1}, {"a": "O6", "b": "H6", "order": 1}], "after": [{"a": "Fe2", "b": "O3", "order": "ionic"}, {"a": "Fe2", "b": "O2", "order": "ionic"}, {"a": "Fe2", "b": "O1", "order": "ionic"}, {"a": "Fe1", "b": "O3", "order": "ionic"}, {"a": "Fe1", "b": "O2", "order": "ionic"}, {"a": "Fe1", "b": "O1", "order": "ionic"}, {"a": "O4", "b": "H2", "order": 1}, {"a": "O4", "b": "H1", "order": 1}, {"a": "O5", "b": "H4", "order": 1}, {"a": "O5", "b": "H3", "order": 1}, {"a": "O6", "b": "H6", "order": 1}, {"a": "O6", "b": "H5", "order": 1}], "broken": [{"a": "O1", "b": "H1", "order": 1}, {"a": "O2", "b": "H2", "order": 1}, {"a": "O3", "b": "H3", "order": 1}, {"a": "O4", "b": "H4", "order": 1}, {"a": "O5", "b": "H5", "order": 1}], "formed": [{"a": "Fe2", "b": "O3", "order": "ionic"}, {"a": "Fe2", "b": "O2", "order": "ionic"}, {"a": "Fe2", "b": "O1", "order": "ionic"}, {"a": "Fe1", "b": "O3", "order": "ionic"}, {"a": "Fe1", "b": "O2", "order": "ionic"}, {"a": "Fe1", "b": "O1", "order": "ionic"}, {"a": "O4", "b": "H2", "order": 1}, {"a": "O4", "b": "H1", "order": 1}, {"a": "O5", "b": "H4", "order": 1}, {"a": "O5", "b": "H3", "order": 1}, {"a": "O6", "b": "H5", "order": 1}], "kept": [{"a": "O6", "b": "H6", "order": 1}]}, "labels": [{"id": "reactant-Fe(OH)_3#1", "text": "氢氧化铁 (Fe(OH)_3)", "color": "slate", "phase": "reactant", "atoms": ["Fe1", "O1", "O2", "O3", "H1", "H2", "H3"]}, {"id": "reactant-Fe(OH)_3#2", "text": "氢氧化铁 (Fe(OH)_3)", "color": "slate", "phase": "reactant", "atoms": ["Fe2", "O4", "O5", "H4", "O6", "H5", "H6"]}, {"id": "product-Fe2O3#1", "text": "氧化铁 (Fe₂O₃)", "color": "orange", "phase": "product", "atoms": ["Fe1", "Fe2", "O1", "O2", "O3"]}, {"id": "product-H2O#1", "text": "水 (H₂O)", "color": "cyan", "phase": "product", "atoms": ["O4", "H1", "H2"]}, {"id": "product-H2O#2", "text": "水 (H₂O)", "color": "cyan", "phase": "product", "atoms": ["O5", "H3", "H4"]}, {"id": "product-H2O#3", "text": "水 (H₂O)", "color": "cyan", "phase": "product", "atoms": ["O6", "H5", "H6"]}], "elementCounts": {"Fe": 2, "O": 6, "H": 6}, "legend": [{"el": "Fe", "color": "#f97316", "name": "铁"}, {"el": "O", "color": "#ef4444", "name": "氧"}, {"el": "H", "color": "#f1f5f9", "name": "氢"}], "steps": [{"title": "反应物靠近", "html": "<span class='text-slate-700 font-semibold'>Fe(OH)₃</span> 分子相互靠近。此时分子内原子保持原有连接，体系能量尚未发生变化。"}, {"title": "Δ，旧键断裂", "html": "在<b>Δ</b>条件下，反应物分子内的<b>化学键断裂</b>（动画中橙色虚线的键），原子被打散，处于不稳定的过渡状态，随即开始重新组合。"}, {"title": "生成产物", "html": "原子重新组合生成 <span class='text-emerald-700 font-semibold'>Fe₂O₃、H₂O</span>，新键形成（绿色虚线的键）。反应前后原子种类与数目不变，符合<b>质量守恒</b>。"}], "fragments": [], "energy": null, "electrons": [], "ui": {"reactants": "反应物", "products": "产物", "progress": "反应进度", "play": "自动演示", "pause": "暂停演示", "reset": "复位", "prev": "上一步", "next": "下一步", "hint": "拖动滑块观察化学键的断裂、原子重组与守恒，或点击上方步骤跳转。", "drag": "拖拽旋转 · 滚轮缩放 · 右键平移", "legend": "原子图例", "conservation": "原子守恒", "energy": "能量·反应进程", "broken": "断裂的键", "formed": "新生成的键", "labels": "标签", "labelsHint": "显示 / 隐藏分子标签"}, "card": "2Fe(OH)₃ =Δ= Fe₂O₃ + 3H₂O"}, {"meta": {"title": "必修1.md · 六、铁及其化合物", "subtitle": "", "language": "zh-CN", "category": "inorganic", "accent": "indigo", "engine": "morph", "equation": "\\mathrm{2Fe^{3+} + Fe = 3Fe^{2+}}", "pageTitle": "必修1 · 六、铁及其化合物"}, "conditions": {}, "atoms": [{"id": "Fe1", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [-3.4, -0.6, 0.0], "end": [-3.4, -0.6, 0.0], "rmol": "Fe^{3+}#1", "pmol": "Fe^{2+}#1"}, {"id": "Fe2", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [0.0, 0.6, 0.0], "end": [0.0, 0.6, 0.0], "rmol": "Fe^{3+}#2", "pmol": "Fe^{2+}#2"}, {"id": "Fe3", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [3.4, -0.6, 0.0], "end": [3.4, -0.6, 0.0], "rmol": "Fe#1", "pmol": "Fe^{2+}#3"}], "bonds": {"before": [], "after": [], "broken": [], "formed": [], "kept": []}, "labels": [{"id": "reactant-Fe^{3+}#1", "text": "铁离子 (Fe^{3+})", "color": "slate", "phase": "reactant", "atoms": ["Fe1"]}, {"id": "reactant-Fe^{3+}#2", "text": "铁离子 (Fe^{3+})", "color": "slate", "phase": "reactant", "atoms": ["Fe2"]}, {"id": "reactant-Fe#1", "text": "铁 (Fe)", "color": "slate", "phase": "reactant", "atoms": ["Fe3"]}, {"id": "product-Fe^{2+}#1", "text": "亚铁离子 (Fe^{2+})", "color": "slate", "phase": "product", "atoms": ["Fe1"]}, {"id": "product-Fe^{2+}#2", "text": "亚铁离子 (Fe^{2+})", "color": "slate", "phase": "product", "atoms": ["Fe2"]}, {"id": "product-Fe^{2+}#3", "text": "亚铁离子 (Fe^{2+})", "color": "slate", "phase": "product", "atoms": ["Fe3"]}], "elementCounts": {"Fe": 3}, "legend": [{"el": "Fe", "color": "#f97316", "name": "铁"}], "steps": [{"title": "反应物靠近", "html": "<span class='text-slate-700 font-semibold'>Fe³⁺、Fe</span> 分子相互靠近。此时分子内原子保持原有连接，体系能量尚未发生变化。"}, {"title": "反应发生，旧键断裂", "html": "在<b>反应发生</b>条件下，反应物分子内的<b>化学键断裂</b>（动画中橙色虚线的键），原子被打散，处于不稳定的过渡状态，随即开始重新组合。"}, {"title": "生成产物", "html": "原子重新组合生成 <span class='text-emerald-700 font-semibold'>Fe²⁺</span>，新键形成（绿色虚线的键）。反应前后原子种类与数目不变，符合<b>质量守恒</b>。"}], "fragments": [], "energy": null, "electrons": [], "ui": {"reactants": "反应物", "products": "产物", "progress": "反应进度", "play": "自动演示", "pause": "暂停演示", "reset": "复位", "prev": "上一步", "next": "下一步", "hint": "拖动滑块观察化学键的断裂、原子重组与守恒，或点击上方步骤跳转。", "drag": "拖拽旋转 · 滚轮缩放 · 右键平移", "legend": "原子图例", "conservation": "原子守恒", "energy": "能量·反应进程", "broken": "断裂的键", "formed": "新生成的键", "labels": "标签", "labelsHint": "显示 / 隐藏分子标签"}, "card": "2Fe³⁺ + Fe = 3Fe²⁺"}, {"meta": {"title": "必修1.md · 六、铁及其化合物", "subtitle": "", "language": "zh-CN", "category": "inorganic", "accent": "indigo", "engine": "morph", "equation": "\\mathrm{2Fe^{2+} + Cl_2 = 2Fe^{3+} + 2Cl^-}", "pageTitle": "必修1 · 六、铁及其化合物"}, "conditions": {}, "atoms": [{"id": "Fe1", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [-3.4, -0.6, 0.0], "end": [-5.1, -0.6, 0.0], "rmol": "Fe^{2+}#1", "pmol": "Fe^{3+}#1"}, {"id": "Fe2", "el": "Fe", "color": "#f97316", "radius": 0.58, "start": [0.0, 0.6, 0.0], "end": [-1.7, 0.6, 0.0], "rmol": "Fe^{2+}#2", "pmol": "Fe^{3+}#2"}, {"id": "Cl1", "el": "Cl", "color": "#22c55e", "radius": 0.52, "start": [2.675, -0.6, 0.0], "end": [1.7, -0.6, 0.0], "rmol": "Cl2#1", "pmol": "Cl^-#1"}, {"id": "Cl2", "el": "Cl", "color": "#22c55e", "radius": 0.52, "start": [4.125, -0.6, 0.0], "end": [5.1, 0.6, 0.0], "rmol": "Cl2#1", "pmol": "Cl^-#2"}], "bonds": {"before": [{"a": "Cl1", "b": "Cl2", "order": 1}], "after": [], "broken": [{"a": "Cl1", "b": "Cl2", "order": 1}], "formed": [], "kept": []}, "labels": [{"id": "reactant-Fe^{2+}#1", "text": "亚铁离子 (Fe^{2+})", "color": "slate", "phase": "reactant", "atoms": ["Fe1"]}, {"id": "reactant-Fe^{2+}#2", "text": "亚铁离子 (Fe^{2+})", "color": "slate", "phase": "reactant", "atoms": ["Fe2"]}, {"id": "reactant-Cl2#1", "text": "氯气 (Cl₂)", "color": "green", "phase": "reactant", "atoms": ["Cl1", "Cl2"]}, {"id": "product-Fe^{3+}#1", "text": "铁离子 (Fe^{3+})", "color": "slate", "phase": "product", "atoms": ["Fe1"]}, {"id": "product-Fe^{3+}#2", "text": "铁离子 (Fe^{3+})", "color": "slate", "phase": "product", "atoms": ["Fe2"]}, {"id": "product-Cl^-#1", "text": "氯离子 (Cl^-)", "color": "slate", "phase": "product", "atoms": ["Cl1"]}, {"id": "product-Cl^-#2", "text": "氯离子 (Cl^-)", "color": "slate", "phase": "product", "atoms": ["Cl2"]}], "elementCounts": {"Fe": 2, "Cl": 2}, "legend": [{"el": "Fe", "color": "#f97316", "name": "铁"}, {"el": "Cl", "color": "#22c55e", "name": "氯"}], "steps": [{"title": "反应物靠近", "html": "<span class='text-slate-700 font-semibold'>Fe²⁺、Cl₂</span> 分子相互靠近。此时分子内原子保持原有连接，体系能量尚未发生变化。"}, {"title": "反应发生，旧键断裂", "html": "在<b>反应发生</b>条件下，反应物分子内的<b>化学键断裂</b>（动画中橙色虚线的键），原子被打散，处于不稳定的过渡状态，随即开始重新组合。"}, {"title": "生成产物", "html": "原子重新组合生成 <span class='text-emerald-700 font-semibold'>Fe³⁺、Cl⁻</span>，新键形成（绿色虚线的键）。反应前后原子种类与数目不变，符合<b>质量守恒</b>。"}], "fragments": [], "energy": null, "electrons": [], "ui": {"reactants": "反应物", "products": "产物", "progress": "反应进度", "play": "自动演示", "pause": "暂停演示", "reset": "复位", "prev": "上一步", "next": "下一步", "hint": "拖动滑块观察化学键的断裂、原子重组与守恒，或点击上方步骤跳转。", "drag": "拖拽旋转 · 滚轮缩放 · 右键平移", "legend": "原子图例", "conservation": "原子守恒", "energy": "能量·反应进程", "broken": "断裂的键", "formed": "新生成的键", "labels": "标签", "labelsHint": "显示 / 隐藏分子标签"}, "card": "2Fe²⁺ + Cl₂ = 2Fe³⁺ + 2Cl⁻"}];;
+    let DATA = ALL[0], curIdx = 0;
+    (function () {
+        let META = DATA.meta, COND = DATA.conditions || {}, UI = DATA.ui || {};
+        const ACCENTS = { amber:'#f59e0b', indigo:'#6366f1', emerald:'#10b981', sky:'#0ea5e9',
+            violet:'#8b5cf6', rose:'#f43f5e', cyan:'#06b6d4', red:'#ef4444', green:'#22c55e',
+            orange:'#f97316', blue:'#3b82f6', slate:'#64748b', teal:'#14b8a6' };
+        let ACC = ACCENTS[META.accent] || ACCENTS.indigo;
+        function hexToRgba(h, a) { const n = parseInt(h.slice(1), 16);
+            return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; }
+        document.documentElement.style.setProperty('--accent', ACC);
+        document.documentElement.style.setProperty('--accent-soft', hexToRgba(ACC, 0.25));
+
+        // Light scene palette (single theme)
+        const SCENE_BG = 0xeef2f7, BOND_COLOR = 0x94a3b8;
+        const BROKEN_COLOR = 0xf59e0b, BROKEN_EMIT = 0xef4444, FORMED_COLOR = 0x34d399, FORMED_EMIT = 0x059669;
+
+        // Phase boundaries (approach / transition / separate)
+        const P1 = 0.4, P2 = 0.7;
+        function phaseOf(p) {
+            if (p < P1) return { phase: 1, t: p / P1 };
+            if (p <= P2) return { phase: 2, t: (p - P1) / (P2 - P1) };
+            return { phase: 3, t: (p - P2) / (1 - P2) };
+        }
+        const smooth = t => t * t * (3 - 2 * t);
+
+        // ---- State ----
+        let scene, camera, renderer, controls;
+        let progress = 0, isPlaying = false, playRAF = null, slideRAF = null;
+        let showFlame = true, showCatalyst = true, showLabels = true;
+        const container = document.getElementById('canvas-container');
+        let atoms = {};       // id -> {el, mesh, start, end, cur, frag, flocal}
+        let fragments = {};    // id -> {catalyst, K0,K1,K2, curPos, curRot, sprite, light}
+        const bondList = [];     // {a,b,order,kind, cyls:[]}
+        let flameLight, flameSprite, transitionLight;
+        const electronSprites = [];
+
+        // ===== Geometry helpers =====
+        const geomCache = {};
+        function sphereGeom(r) { const k = r.toFixed(3);
+            return geomCache[k] || (geomCache[k] = new THREE.SphereGeometry(r, 28, 28)); }
+        const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 10);
+
+        function radialGlow(color) {
+            const c = document.createElement('canvas'); c.width = c.height = 64;
+            const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 30);
+            g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.2, color);
+            g.addColorStop(0.5, hexToRgba(color, 0.4)); g.addColorStop(1, 'rgba(0,0,0,0)');
+            x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+            return new THREE.CanvasTexture(c);
+        }
+
+        // ===== Build scene =====
+        function init3D() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(SCENE_BG);
+            scene.fog = new THREE.FogExp2(SCENE_BG, 0.022);
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+            camera.position.set(0, 4, 13);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; controls.dampingFactor = 0.05;
+            controls.maxDistance = 28; controls.minDistance = 3;
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+            const dir = new THREE.DirectionalLight(0xffffff, 1.05);
+            dir.position.set(5, 12, 8); dir.castShadow = true;
+            dir.shadow.mapSize.set(2048, 2048); dir.shadow.bias = -0.001; scene.add(dir);
+            const fill = new THREE.DirectionalLight(0x93c5fd, 0.35); fill.position.set(-6, -5, -4); scene.add(fill);
+
+            transitionLight = new THREE.PointLight(0xffcc00, 0, 14);
+            transitionLight.position.set(0, 0.4, 0); scene.add(transitionLight);
+
+            if (COND.flame) {
+                flameLight = new THREE.PointLight(0xff7a18, 0, 16);
+                flameLight.position.set(0, 0.5, 0); scene.add(flameLight);
+                flameSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+                    map: radialGlow('#ffae00'), color: 0xff8a00, transparent: true,
+                    blending: THREE.AdditiveBlending, opacity: 0 }));
+                flameSprite.scale.set(0.1, 0.1, 0.1); flameSprite.position.set(0, 0.5, 0); scene.add(flameSprite);
+            }
+
+            const grid = new THREE.GridHelper(34, 34, 0xcbd5e1, 0xe2e8f0); grid.position.y = -4.5; scene.add(grid);
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.ShadowMaterial({ opacity: 0.10 }));
+            floor.rotation.x = -Math.PI / 2; floor.position.y = -4.45; floor.receiveShadow = true; scene.add(floor);
+
+            buildAtoms(); buildFragments(); buildBonds(); buildElectrons();
+            window.addEventListener('resize', onResize);
+        }
+
+        // 原子描一圈深色边，在浅色背景上提升对比（教科书球棍图风）
+        const OUTLINE_MAT = new THREE.MeshBasicMaterial({ color: 0x334155, side: THREE.BackSide });
+        function buildAtoms() {
+            DATA.atoms.forEach(a => {
+                const mat = new THREE.MeshStandardMaterial({ color: a.color, roughness: 0.3, metalness: 0.05 });
+                const mesh = new THREE.Mesh(sphereGeom(a.radius), mat);
+                mesh.castShadow = mesh.receiveShadow = true; scene.add(mesh);
+                const outline = new THREE.Mesh(sphereGeom(a.radius), OUTLINE_MAT);
+                outline.scale.setScalar(1.07); mesh.add(outline);
+                atoms[a.id] = {
+                    el: a.el, mesh, radius: a.radius,
+                    start: new THREE.Vector3().fromArray(a.start),
+                    end: new THREE.Vector3().fromArray(a.end),
+                    cur: new THREE.Vector3().fromArray(a.start),
+                    frag: a.frag || null,
+                    flocal: a.flocal ? new THREE.Vector3().fromArray(a.flocal) : null,
+                };
+            });
+        }
+
+        function buildFragments() {
+            (DATA.fragments || []).forEach(f => {
+                const frag = { catalyst: !!f.catalyst, K0: f.K0, K1: f.K1, K2: f.K2,
+                    curPos: new THREE.Vector3(), curRot: [0, 0, 0] };
+                if (f.catalyst) {
+                    frag.sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+                        map: radialGlow('#0891b2'), color: 0x0891b2, transparent: true,
+                        blending: THREE.NormalBlending, opacity: 0.85 }));
+                    frag.sprite.scale.set(1.3, 1.3, 1.3); scene.add(frag.sprite);
+                    frag.light = new THREE.PointLight(0x22d3ee, 1.0, 4); scene.add(frag.light);
+                }
+                fragments[f.id] = frag;
+            });
+        }
+
+        function makeBondMat() {
+            return new THREE.MeshStandardMaterial({ color: BOND_COLOR, roughness: 0.4, metalness: 0.1,
+                transparent: true, opacity: 1, emissive: 0x000000, emissiveIntensity: 0 });
+        }
+        function buildBonds() {
+            const add = (b, kind) => {
+                const count = (b.order === 2) ? 2 : (b.order === 3 ? 3 : 1);
+                const cyls = [];
+                for (let i = 0; i < count; i++) {
+                    const m = new THREE.Mesh(cylGeo, makeBondMat()); m.castShadow = true; m.visible = false;
+                    scene.add(m); cyls.push(m);
+                }
+                bondList.push({ a: b.a, b: b.b, order: b.order, ionic: b.order === 'ionic', kind, cyls });
+            };
+            DATA.bonds.kept.forEach(b => add(b, 'kept'));
+            DATA.bonds.broken.forEach(b => add(b, 'broken'));
+            DATA.bonds.formed.forEach(b => add(b, 'formed'));
+        }
+
+        function buildElectrons() {
+            (DATA.electrons || []).forEach(() => {
+                const s = new THREE.Sprite(new THREE.SpriteMaterial({
+                    map: radialGlow('#0e7490'), color: 0x0891b2, transparent: true,
+                    blending: THREE.NormalBlending, opacity: 0 }));
+                s.scale.set(0.5, 0.5, 0.5); scene.add(s); electronSprites.push(s);
+            });
+        }
+
+        // ===== Position resolvers =====
+        function molBob(seed, time) {
+            let h = 0; for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 997;
+            const ph = h * 0.0063;
+            return new THREE.Vector3(Math.sin(time * 0.6 + ph) * 0.11,
+                Math.cos(time * 0.5 + ph) * 0.11, Math.sin(time * 0.4 + ph) * 0.09);
+        }
+        function morphPositions(p, time) {
+            const ph = phaseOf(p);
+            for (const id in atoms) {
+                const a = atoms[id];
+                if (ph.phase === 1) {
+                    a.cur.copy(a.start).add(molBob(a.frag || 'r', time));
+                } else if (ph.phase === 2) {
+                    const t = smooth(ph.t), amp = 0.1 * Math.sin(ph.t * Math.PI);
+                    a.cur.lerpVectors(a.start, a.end, t);
+                    a.cur.x += (Math.random() - 0.5) * amp;
+                    a.cur.y += (Math.random() - 0.5) * amp;
+                    a.cur.z += (Math.random() - 0.5) * amp;
+                } else {
+                    a.cur.copy(a.end).add(molBob(a.frag || 'p', time));
+                }
+                a.mesh.position.copy(a.cur);
+            }
+        }
+        const _eu = new THREE.Euler();
+        function lerpArr(A, B, t) { return [A[0]+(B[0]-A[0])*t, A[1]+(B[1]-A[1])*t, A[2]+(B[2]-A[2])*t]; }
+        function mechanismPositions(p, time) {
+            const ph = phaseOf(p);
+            for (const fid in fragments) {
+                const f = fragments[fid];
+                let pos, rot;
+                if (ph.phase === 1) { pos = lerpArr(f.K0.pos, f.K1.pos, ph.t); rot = lerpArr(f.K0.rot, f.K1.rot, ph.t); }
+                else if (ph.phase === 2) {
+                    const j = 0.045 * Math.sin(ph.t * Math.PI);
+                    pos = [f.K1.pos[0] + (Math.random()-0.5)*j, f.K1.pos[1] + (Math.random()-0.5)*j, f.K1.pos[2] + (Math.random()-0.5)*j];
+                    rot = f.K1.rot;
+                } else { pos = lerpArr(f.K1.pos, f.K2.pos, ph.t); rot = lerpArr(f.K1.rot, f.K2.rot, ph.t); }
+                f.curPos.set(pos[0], pos[1], pos[2]); f.curRot = rot;
+                if (f.sprite) { f.sprite.position.copy(f.curPos); f.light.position.copy(f.curPos);
+                    f.sprite.visible = f.light.visible = showCatalyst; }
+            }
+            for (const id in atoms) {
+                const a = atoms[id]; const f = fragments[a.frag];
+                if (!f || !a.flocal) { a.mesh.position.copy(a.cur); continue; }
+                _eu.set(f.curRot[0], f.curRot[1], f.curRot[2]);
+                a.cur.copy(a.flocal).applyEuler(_eu).add(f.curPos);
+                a.mesh.position.copy(a.cur);
+                if (f.catalyst) a.mesh.visible = showCatalyst;
+            }
+        }
+
+        // ===== Bonds =====
+        const _dir = new THREE.Vector3(), _mid = new THREE.Vector3(), _perp = new THREE.Vector3(),
+              _up = new THREE.Vector3(0, 1, 0);
+        function placeCyl(mesh, A, B, radius, opacity, color, emit, emitI) {
+            if (opacity <= 0.02) { mesh.visible = false; return; }
+            mesh.visible = true;
+            _dir.subVectors(B, A); const len = _dir.length();
+            mesh.scale.set(radius, len, radius);
+            _mid.addVectors(A, B).multiplyScalar(0.5); mesh.position.copy(_mid);
+            mesh.quaternion.setFromUnitVectors(_up, _dir.clone().normalize());
+            mesh.material.opacity = opacity; mesh.material.color.setHex(color);
+            mesh.material.emissive.setHex(emit); mesh.material.emissiveIntensity = emitI;
+        }
+        function drawBond(b, p) {
+            const A = atoms[b.a].cur, B = atoms[b.b].cur;
+            const ph = phaseOf(p);
+            let opacity = 1, color = BOND_COLOR, emit = 0x000000, emitI = 0, glow = false;
+            if (b.kind === 'broken') {
+                if (ph.phase === 1) opacity = 1;
+                else if (ph.phase === 2) { opacity = 1 - ph.t; glow = true; }
+                else opacity = 0;
+            } else if (b.kind === 'formed') {
+                if (ph.phase === 1) opacity = 0;
+                else if (ph.phase === 2) { opacity = ph.t; glow = true; }
+                else opacity = 1;
+            }
+            if (glow) {
+                const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.5;
+                if (b.kind === 'broken') { color = BROKEN_COLOR; emit = BROKEN_EMIT; }
+                else { color = FORMED_COLOR; emit = FORMED_EMIT; }
+                emitI = pulse;
+            }
+            const baseR = b.ionic ? 0.035 : (b.order === 2 || b.order === 3 ? 0.06 : 0.08);
+            const op = b.ionic ? opacity * 0.5 : opacity;
+            if (b.cyls.length === 1) {
+                placeCyl(b.cyls[0], A, B, glow ? baseR * 0.85 : baseR, op, color, emit, emitI);
+            } else {
+                _dir.subVectors(B, A).normalize();
+                _perp.set(-_dir.y, _dir.x, 0);
+                if (_perp.lengthSq() < 0.01) _perp.set(0, -_dir.z, _dir.y);
+                _perp.normalize().multiplyScalar(0.14);
+                if (b.cyls.length === 2) {
+                    placeCyl(b.cyls[0], A.clone().add(_perp), B.clone().add(_perp), baseR, op, color, emit, emitI);
+                    placeCyl(b.cyls[1], A.clone().sub(_perp), B.clone().sub(_perp), baseR, op, color, emit, emitI);
+                } else {
+                    placeCyl(b.cyls[0], A, B, baseR, op, color, emit, emitI);
+                    placeCyl(b.cyls[1], A.clone().add(_perp), B.clone().add(_perp), baseR, op, color, emit, emitI);
+                    placeCyl(b.cyls[2], A.clone().sub(_perp), B.clone().sub(_perp), baseR, op, color, emit, emitI);
+                }
+            }
+        }
+
+        // ===== Overlays =====
+        function updateFlame(p) {
+            if (!COND.flame) return;
+            const ph = phaseOf(p);
+            let intensity = 0;
+            if (ph.phase === 2) intensity = Math.sin(ph.t * Math.PI);
+            else if (ph.phase === 3) intensity = Math.max(0, 1 - ph.t) * 0.3;
+            if (!showFlame) intensity = 0;
+            const flick = 0.85 + Math.sin(Date.now() * 0.03) * 0.15;
+            flameLight.intensity = intensity * 6 * flick;
+            flameSprite.material.opacity = intensity * flick;
+            const s = 0.5 + intensity * 5.5 * flick; flameSprite.scale.set(s, s, s);
+            flameSprite.visible = showFlame && intensity > 0.01;
+        }
+        function updateTransitionGlow(p) {
+            const ph = phaseOf(p);
+            const on = COND.transitionGlow || (DATA.fragments || []).length;
+            transitionLight.intensity = (on && ph.phase === 2) ? Math.sin(ph.t * Math.PI) * 2.5 : 0;
+        }
+        function updateElectrons(p) {
+            const defs = DATA.electrons || []; if (!defs.length) return;
+            const ph = phaseOf(p);
+            defs.forEach((d, i) => {
+                const s = electronSprites[i]; if (!atoms[d.from] || !atoms[d.to]) return;
+                if (ph.phase === 2) {
+                    const t = smooth(ph.t);
+                    s.position.lerpVectors(atoms[d.from].cur, atoms[d.to].cur, t);
+                    s.position.y += Math.sin(ph.t * Math.PI) * 0.6;
+                    s.material.opacity = Math.sin(ph.t * Math.PI);
+                    s.visible = true;
+                } else { s.visible = false; }
+            });
+        }
+
+        // ===== Labels =====
+        const _v = new THREE.Vector3(), _camUp = new THREE.Vector3();
+        function buildLabels() {
+            const overlay = document.getElementById('labels-overlay');
+            (DATA.labels || []).forEach(l => {
+                const el = document.createElement('div');
+                el.id = 'lbl-' + l.id;
+                el.className = 'absolute text-white text-xs font-semibold px-2 py-1 rounded shadow-lg transition-opacity duration-300 transform -translate-x-1/2 -translate-y-full border';
+                const c = ({ red:'#ef4444', cyan:'#0891b2', blue:'#3b82f6', emerald:'#10b981', slate:'#475569',
+                    violet:'#8b5cf6', green:'#16a34a', sky:'#0ea5e9', orange:'#f97316' })[l.color] || ACC;
+                el.style.background = hexToRgba(c, 0.92); el.style.borderColor = hexToRgba(c, 1);
+                el.textContent = l.text; el.dataset.phase = l.phase;
+                overlay.appendChild(el); l._el = el; l._ids = l.atoms;
+            });
+        }
+        function updateLabels(p) {
+            const rect = container.getBoundingClientRect();
+            const reactantPhase = p < 0.55;
+            _camUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+            (DATA.labels || []).forEach(l => {
+                const show = showLabels && (l.phase === 'reactant' ? reactantPhase : !reactantPhase);
+                const el = l._el;
+                if (!show) { el.style.opacity = '0'; return; }
+                // Anchor above the molecule's topmost atom so the box never covers the bonds.
+                let sx = 0, topY = Infinity, n = 0;
+                for (const id of l._ids) {
+                    const a = atoms[id];
+                    _v.copy(a.cur).project(camera);
+                    if (_v.z > 1) continue;
+                    sx += (_v.x * 0.5 + 0.5) * rect.width;
+                    _v.copy(a.cur).addScaledVector(_camUp, a.radius).project(camera);
+                    topY = Math.min(topY, (_v.y * -0.5 + 0.5) * rect.height);
+                    n++;
+                }
+                if (!n) { el.style.opacity = '0'; return; }
+                el.style.opacity = '1';
+                el.style.left = (sx / n) + 'px';
+                el.style.top = (topY - 6) + 'px';
+            });
+        }
+
+        // ===== Energy diagram =====
+        function drawEnergy(p) {
+            const E = DATA.energy; if (!E) return;
+            const cv = document.getElementById('energy-canvas'), x = cv.getContext('2d');
+            const W = cv.width, H = cv.height, pad = 14;
+            x.clearRect(0, 0, W, H);
+            const y0 = 0.72, act = E.activation != null ? E.activation : 0.7, dH = E.deltaH != null ? E.deltaH : -0.4;
+            const yEnd = y0 + dH;
+            const peakX = 0.45, peak = Math.max(y0, yEnd) + act * 0.5 + 0.1;
+            const Y = v => pad + (1 - v) * (H - 2 * pad);
+            const X = u => pad + u * (W - 2 * pad);
+            // curve
+            x.strokeStyle = ACC; x.lineWidth = 2; x.beginPath();
+            for (let i = 0; i <= 60; i++) {
+                const u = i / 60; let yv;
+                if (u < peakX) { const k = u / peakX; yv = y0 + (peak - y0) * (k * k * (3 - 2 * k)); }
+                else { const k = (u - peakX) / (1 - peakX); yv = peak + (yEnd - peak) * (k * k * (3 - 2 * k)); }
+                const px = X(u), py = Y(yv); i ? x.lineTo(px, py) : x.moveTo(px, py);
+            }
+            x.stroke();
+            // marker
+            const u = Math.min(1, p); let yv;
+            if (u < peakX) { const k = u / peakX; yv = y0 + (peak - y0) * (k * k * (3 - 2 * k)); }
+            else { const k = (u - peakX) / (1 - peakX); yv = peak + (yEnd - peak) * (k * k * (3 - 2 * k)); }
+            x.fillStyle = '#0f172a'; x.beginPath(); x.arc(X(u), Y(yv), 3.5, 0, 7); x.fill();
+            // baseline labels
+            x.fillStyle = '#64748b'; x.font = '9px sans-serif';
+            x.fillText(E.reactantLabel || '反应物', pad, Y(y0) - 4);
+            x.fillText(E.productLabel || '产物', W - pad - 26, Y(yEnd) - 4);
+        }
+
+        // ===== Render loop =====
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            const p = progress / 100, time = Date.now() * 0.001;
+            const pct = Math.round(progress);
+            document.getElementById('progress-readout').textContent = pct + '%';
+            document.getElementById('viewport-progress').style.width = pct + '%';
+
+            if (META.engine === 'mechanism') mechanismPositions(p, time); else morphPositions(p, time);
+            bondList.forEach(b => drawBond(b, p));
+            updateFlame(p); updateTransitionGlow(p); updateElectrons(p);
+            updateLabels(p); drawEnergy(p);
+            updateStep(p);
+            renderer.render(scene, camera);
+        }
+
+        // ===== Stepper / explanation =====
+        let steps = DATA.steps || [];
+        const STEP_INACTIVE = 'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all duration-300 bg-white border-slate-300 text-slate-400';
+        function buildStepper() {
+            const wrap = document.getElementById('stepper');
+            steps.forEach((s, i) => {
+                const btn = document.createElement('button');
+                btn.className = 'flex flex-col items-center gap-2 cursor-pointer focus:outline-none';
+                btn.onclick = () => jumpToStep(i + 1);
+                btn.innerHTML = `<span id="step-circle-${i+1}" class="${STEP_INACTIVE}">${i+1}</span>
+                    <span id="step-label-${i+1}" class="text-xs transition-colors duration-300 text-slate-400 max-w-[90px] text-center leading-tight">${s.title || ('步骤'+(i+1))}</span>`;
+                wrap.appendChild(btn);
+            });
+        }
+        let lastStep = -1;
+        function stepIndexFor(p) {
+            if (steps.length <= 1) return 1;
+            if (p < P1) return 1;
+            if (p <= P2) return Math.min(2, steps.length);
+            return steps.length;
+        }
+        function updateStep(p) {
+            const n = stepIndexFor(p);
+            if (n === lastStep) return; lastStep = n;
+            for (let i = 1; i <= steps.length; i++) {
+                const circle = document.getElementById('step-circle-' + i);
+                const label = document.getElementById('step-label-' + i);
+                const on = i <= n;
+                circle.style.background = on ? ACC : '';
+                circle.style.borderColor = on ? ACC : '';
+                circle.className = on
+                    ? 'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all duration-300 text-white shadow-lg'
+                    : STEP_INACTIVE;
+                label.className = 'text-xs transition-colors duration-300 max-w-[90px] text-center leading-tight ' +
+                    (on ? 'text-slate-800 font-semibold' : 'text-slate-400');
+            }
+            document.getElementById('step-progress-line').style.width = (((n - 1) / Math.max(1, steps.length - 1)) * 100) + '%';
+            const s = steps[n - 1] || {};
+            document.getElementById('step-title-text').textContent = `${n}. ${s.title || ''}`;
+            document.getElementById('explanation-text').innerHTML = s.html || '';
+        }
+
+        // ===== Controls =====
+        function jumpToStep(n) {
+            const target = steps.length <= 1 ? 0 : Math.round(((n - 1) / (steps.length - 1)) * 100);
+            animateSliderTo(target);
+        }
+        function animateSliderTo(target) {
+            if (isPlaying) togglePlay();
+            if (slideRAF) cancelAnimationFrame(slideRAF);
+            const slider = document.getElementById('reaction-slider');
+            (function step() {
+                const cur = parseFloat(slider.value), diff = target - cur;
+                if (Math.abs(diff) < 2) { slider.value = target; progress = target; }
+                else { const nx = cur + Math.sign(diff) * 3; slider.value = nx; progress = nx; slideRAF = requestAnimationFrame(step); }
+            })();
+        }
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            const btn = document.getElementById('play-btn'), txt = document.getElementById('play-text');
+            if (isPlaying) {
+                if (progress >= 100) { progress = 0; document.getElementById('reaction-slider').value = 0; }
+                txt.textContent = UI.pause || '暂停演示';
+                btn.firstElementChild.innerHTML = `<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>`;
+                playLoop();
+            } else {
+                txt.textContent = UI.play || '自动演示';
+                btn.firstElementChild.innerHTML = `<path d="M8 5v14l11-7z"/>`;
+                if (playRAF) { cancelAnimationFrame(playRAF); playRAF = null; }
+            }
+        }
+        function playLoop() {
+            if (!isPlaying) return;
+            progress += 0.5;
+            if (progress >= 100) { progress = 100; document.getElementById('reaction-slider').value = 100; togglePlay(); return; }
+            document.getElementById('reaction-slider').value = progress;
+            playRAF = requestAnimationFrame(playLoop);
+        }
+        function onResize() {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        // ===== Static UI from data =====
+        function paintStaticUI() {
+            // 清空上次反应的守恒计数与图例（防跨切换累积）
+            document.getElementById('conservation-chips').innerHTML = '';
+            document.getElementById('legend-grid').innerHTML = '';
+            document.title = (META.title || '化学反应') + ' · 微观3D演示';
+            document.getElementById('page-title').textContent = (META.pageTitle || META.title || '化学反应');
+            document.getElementById('eq-count').textContent = '共 ' + ALL.length + ' 个反应，当前 ' + (curIdx + 1) + '/' + ALL.length;
+            document.documentElement.lang = META.language || 'zh-CN';
+            document.getElementById('title').textContent = META.title || '';
+            document.getElementById('subtitle').textContent = META.subtitle || '';
+            document.getElementById('equation-container').innerHTML = '$$' + (META.equation || '') + '$$';
+            document.getElementById('drag-hint').textContent = UI.drag || '拖拽旋转 · 滚轮缩放 · 右键平移';
+            document.getElementById('progress-label').textContent = UI.progress || '反应进度';
+            document.getElementById('slider-hint').textContent = UI.hint || '';
+            document.getElementById('play-text').textContent = UI.play || '自动演示';
+            document.getElementById('legend-label').textContent = UI.legend || '原子图例';
+            document.getElementById('conservation-label').textContent = UI.conservation || '原子守恒';
+            document.getElementById('labels-toggle-text').textContent = UI.labels || '标签';
+            document.getElementById('labels-toggle').title = UI.labelsHint || '显示 / 隐藏标签';
+            // conservation chips
+            const chips = document.getElementById('conservation-chips');
+            const colorOf = {}; (DATA.legend || []).forEach(l => colorOf[l.el] = l.color);
+            Object.entries(DATA.elementCounts || {}).forEach(([el, n]) => {
+                const d = document.createElement('div');
+                d.className = 'flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-100 border border-slate-200 text-xs';
+                d.innerHTML = `<span class="w-3 h-3 rounded-full inline-block" style="background:${colorOf[el]||'#94a3b8'}"></span>
+                    <span class="text-slate-700 font-mono">${el} ×${n}</span>`;
+                chips.appendChild(d);
+            });
+            // legend
+            const lg = document.getElementById('legend-grid');
+            (DATA.legend || []).forEach(l => {
+                const d = document.createElement('div'); d.className = 'flex items-center space-x-2 text-slate-700';
+                d.innerHTML = `<span class="w-3.5 h-3.5 rounded-full inline-block shrink-0" style="background:${l.color}"></span><span>${l.name} ${l.el}</span>`;
+                lg.appendChild(d);
+            });
+            const tf = document.getElementById('toggle-flame');
+            if (COND.flame) { tf.classList.remove('hidden'); tf.classList.add('flex'); }
+            else { tf.classList.add('hidden'); tf.classList.remove('flex'); }
+            const tc = document.getElementById('toggle-catalyst');
+            if (COND.catalyst) {
+                tc.classList.remove('hidden'); tc.classList.add('flex');
+                document.getElementById('catalyst-title').textContent = (COND.catalyst.label || '催化剂');
+            } else { tc.classList.add('hidden'); tc.classList.remove('flex'); }
+            const ep = document.getElementById('energy-panel');
+            if (DATA.energy) {
+                ep.classList.remove('hidden');
+                document.getElementById('energy-title').textContent = UI.energy || '能量·反应进程';
+            } else { ep.classList.add('hidden'); }
+        }
+
+        function bindEvents() {
+            const slider = document.getElementById('reaction-slider');
+            slider.oninput = e => {
+                if (isPlaying) togglePlay();
+                if (slideRAF) { cancelAnimationFrame(slideRAF); slideRAF = null; }
+                progress = parseFloat(e.target.value);
+            }
+            document.getElementById('play-btn').onclick = togglePlay;
+            document.getElementById('reset-btn').onclick = () => {
+                if (isPlaying) togglePlay();
+                if (slideRAF) { cancelAnimationFrame(slideRAF); slideRAF = null; }
+                progress = 0; slider.value = 0;
+                camera.position.set(0, 4, 13); controls.target.set(0, 0, 0);
+            }
+            document.getElementById('prev-btn').onclick = () => jumpToStep(Math.max(1, stepIndexFor(progress / 100) - 1));
+            document.getElementById('next-btn').onclick = () => jumpToStep(Math.min(steps.length, stepIndexFor(progress / 100) + 1));
+            const ft = document.getElementById('flame-toggle');
+            if (ft) ft.onchange = e => showFlame = e.target.checked;
+            const ct = document.getElementById('catalyst-toggle');
+            if (ct) ct.onchange = e => showCatalyst = e.target.checked;
+            const EYE = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>`;
+            const EYE_OFF = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88"/>`;
+            const lt = document.getElementById('labels-toggle'), lti = document.getElementById('labels-toggle-icon');
+            lt.onclick = () => {
+                showLabels = !showLabels;
+                lti.innerHTML = showLabels ? EYE : EYE_OFF;
+                lt.classList.toggle('text-slate-400', !showLabels);
+                lt.classList.toggle('text-slate-600', showLabels);
+            }
+        }
+
+        
+        // ===== 多反应卡片切换 =====
+        function disposeScene() {
+            // 无条件清空标签层（即使 renderer 已为 null，也清掉残留标签）
+            const _lo = document.getElementById('labels-overlay');
+            if (_lo) _lo.innerHTML = '';
+            if (renderer) {
+                cancelAnimationFrame(playRAF); playRAF = null;
+                cancelAnimationFrame(slideRAF); slideRAF = null;
+                window.removeEventListener('resize', onResize);
+                renderer.dispose();
+                if (renderer.domElement && renderer.domElement.parentNode)
+                    renderer.domElement.parentNode.removeChild(renderer.domElement);
+                scene = null; renderer = null; controls = null;
+                atoms = {}; fragments = {}; bondList.length = 0;
+                electronSprites.length = 0;
+                flameLight = null; flameSprite = null; transitionLight = null;
+            }
+        }
+        function switchReaction(idx) {
+            if (idx === curIdx && DATA) return;
+            curIdx = idx; DATA = ALL[idx];
+            META = DATA.meta; COND = DATA.conditions || {}; UI = DATA.ui || {};
+            ACC = ACCENTS[META.accent] || ACCENTS.indigo;
+            steps = DATA.steps || [];
+            disposeScene();
+            progress = 0; isPlaying = false;
+            showFlame = true; showCatalyst = true;
+            const _ft = document.getElementById('flame-toggle');
+            if (_ft) _ft.checked = true;
+            const _ct = document.getElementById('catalyst-toggle');
+            if (_ct) _ct.checked = true;
+            document.getElementById('reaction-slider').value = 0;
+            document.getElementById('play-text').textContent = UI.play || '自动演示';
+            // 重设 accent 变量（META/COND/UI 是 const，用重建函数内变量）
+            applyAccent();
+            paintStaticUI();
+            const st = document.getElementById('stepper'); st.innerHTML = '';
+            lastStep = -1;
+            document.getElementById('explanation-text').innerHTML = '加载中...';
+            buildStepper(); init3D(); buildLabels(); bindEvents();
+            updateStep(0); lastStep = -1;
+            if (typeof renderMathInElement === 'function') {
+                renderMathInElement(document.body, { delimiters: [
+                    { left: '$$', right: '$$', display: true }, { left: '$', right: '$', display: false }] });
+            }
+            // 高亮当前卡片
+            document.querySelectorAll('#card-row > button').forEach((b, i) => {
+                b.classList.toggle('card-active', i === idx);
+                b.classList.toggle('card-idle', i !== idx);
+            });
+        }
+        function applyAccent() {
+            const m = ALL[curIdx].meta, u = ALL[curIdx].ui || {};
+            const acc = ACCENTS[m.accent] || ACCENTS.indigo;
+            document.documentElement.style.setProperty('--accent', acc);
+            document.documentElement.style.setProperty('--accent-soft', hexToRgba(acc, 0.25));
+        }
+        function buildCards() {
+            const row = document.getElementById('card-row');
+            ALL.forEach((d, i) => {
+                const b = document.createElement('button');
+                b.className = 'card-idle px-3 py-2 rounded-xl text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap';
+                b.textContent = d.card || ('反应 ' + (i + 1));
+                b.onclick = () => switchReaction(i);
+                row.appendChild(b);
+            });
+        }
+        window.onload = function () {
+            buildCards();
+            paintStaticUI(); buildStepper(); init3D(); buildLabels(); bindEvents();
+            updateStep(0); lastStep = -1;
+            animate();
+            if (typeof renderMathInElement === 'function') {
+                renderMathInElement(document.body, { delimiters: [
+                    { left: '$$', right: '$$', display: true }, { left: '$', right: '$', display: false }] });
+            }
+        };
+
+    })();
+    </script>
+</body>
+</html>

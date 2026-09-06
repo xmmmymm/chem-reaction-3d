@@ -1,0 +1,32 @@
+[
+  {
+    "book": "必修1",
+    "file": "data/必修1.js",
+    "chapters": 8,
+    "reactions": 72
+  },
+  {
+    "book": "必修2",
+    "file": "data/必修2.js",
+    "chapters": 6,
+    "reactions": 65
+  },
+  {
+    "book": "选择性必修1",
+    "file": "data/选择性必修1.js",
+    "chapters": 6,
+    "reactions": 71
+  },
+  {
+    "book": "选择性必修2",
+    "file": "data/选择性必修2.js",
+    "chapters": 1,
+    "reactions": 5
+  },
+  {
+    "book": "选择性必修3",
+    "file": "data/选择性必修3.js",
+    "chapters": 5,
+    "reactions": 76
+  }
+]
