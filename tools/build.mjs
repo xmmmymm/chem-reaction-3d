@@ -76,8 +76,11 @@ html = rep(html, '<!--PLAYER_JS-->', `<script>${playerJs}</script>`)
 const leftover = html.match(/<!--(STYLE_|VENDOR_|SKELETON|DATA|PLAYER_)/g)
 if (leftover) throw new Error('未替换的占位符: ' + leftover.join(', '))
 // 安全检查：不应再有外链
-const extRef = html.match(/(?:src|href)\s*=\s*["']https?:\/\/[^"']+/g)
-if (extRef) throw new Error('单文件版仍存在外链 ' + extRef.length + ' 处: ' + extRef.slice(0, 3).join(' , '))
+// 安全检查：不应再有「会被浏览器加载」的外链资源。
+// canonical / og:url 仅为元数据，不产生网络请求，排除在离线检查之外
+const extRef = (html.match(/<(?:script|link|img|iframe|source)\b[^>]*?(?:src|href)\s*=\s*["']https?:\/\/[^"']+/g) || [])
+  .filter((m) => !/rel\s*=\s*["'][^"']*canonical/.test(m))
+if (extRef.length) throw new Error('单文件版仍存在外链资源 ' + extRef.length + ' 处: ' + extRef.slice(0, 3).join(' , '))
 
 await mkdir(DIST, { recursive: true })
 const outFile = join(DIST, '高中化学方程式可视化.html')

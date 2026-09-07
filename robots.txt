@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# 主演示页（单文件全离线 HTML）
+Sitemap: https://xmmmymm.github.io/chem-reaction-3d/sitemap.xml

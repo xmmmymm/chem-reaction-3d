@@ -1,6 +1,15 @@
 # 高中化学方程式 · 微观 3D 可视化
 
-人教版高中化学 5 册教材 **289 个化学方程式**的交互式微观 3D 演示。单文件 HTML，双击即用，**完全离线**（不依赖任何网络）。
+[![GitHub Pages](https://img.shields.io/badge/在线演示-打开即玩-0ea5e9?logo=github)](https://xmmmymm.github.io/chem-reaction-3d/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![方程式](https://img.shields.io/badge/方程式-289-blueviolet)](https://github.com/xmmmymm/chem-reaction-3d)
+[![离线](https://img.shields.io/badge/离线-无需联网-brightgreen)](dist)
+
+**chem-reaction-3d** —— 人教版高中化学 5 册教材 **289 个化学方程式**的交互式微观 3D 演示。
+
+**👉 [在线打开（无需下载）](https://xmmmymm.github.io/chem-reaction-3d/)**
+
+单文件 HTML 也可下载后双击使用，**完全离线**（不依赖任何网络）。
 
 ## 覆盖范围
 
@@ -15,6 +24,8 @@
 | **选择性必修3** | **76** | 第一章 有机化合物的结构特点与研究方法（2）· 第二章 烃（28）· 第三章 烃的衍生物（33）· 第四章 生物大分子（8）· 第五章 合成高分子（5） |
 
 涵盖的反应类型：电离方程式、离子反应与复分解、氧化还原（置换/燃烧/工业反应）、元素化合物（钠/氯/铁/铝/硫/氮/硅/卤素）、热化学、可逆反应、原电池与电解池电极反应、金属腐蚀、金属冶炼、有机（烃、烃的衍生物、生物大分子、合成高分子）、配合物。
+
+别名与检索关键词：`chem-reaction-3d`、`chemistry reaction 3d`、高中化学方程式可视化、化学方程式微观演示、化学反应 3D 动画、分子断键成键演示、原子守恒演示。
 
 > **说明**：选题以人教版教材常见方程式为基准整理，**不等于教材中出现的全部方程式**（选择性必修2 目前仅收录镁与配合物 5 条）。如需补录，编辑 `src/data/*.js` 后重跑 `node tools/build.mjs` 即可。
 
