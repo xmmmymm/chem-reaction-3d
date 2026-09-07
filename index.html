@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="0; url=dist/%E9%AB%98%E4%B8%AD%E5%8C%96%E5%AD%A6%E6%96%B9%E7%A8%8B%E5%BC%8F%E5%8F%AF%E8%A7%86%E5%8C%96.html">
+<title>高中化学方程式 · 微观 3D 可视化</title>
+<style>
+  body{font-family:system-ui,-apple-system,"Microsoft YaHei",sans-serif;display:flex;
+       align-items:center;justify-content:center;height:100vh;margin:0;
+       background:#eef2f7;color:#334155}
+  .box{text-align:center;padding:24px}
+  .t{font-size:16px;font-weight:600;margin-bottom:8px}
+  .s{font-size:13px;color:#64748b}
+  a{color:#0ea5e9}
+  .sp{display:inline-block;width:22px;height:22px;border:3px solid #cbd5e1;
+      border-top-color:#0ea5e9;border-radius:50%;animation:r .8s linear infinite;margin-bottom:12px}
+  @keyframes r{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="sp"></div>
+  <div class="t">正在打开 高中化学方程式 · 微观 3D 可视化…</div>
+  <div class="s">包含人教版 5 册教材 289 个方程式的交互式 3D 演示</div>
+  <div class="s" style="margin-top:14px">
+    若未自动跳转，请<a href="dist/%E9%AB%98%E4%B8%AD%E5%8C%96%E5%AD%A6%E6%96%B9%E7%A8%8B%E5%BC%8F%E5%8F%AF%E8%A7%86%E5%8C%96.html">点击这里</a>
+  </div>
+</div>
+<script>
+  // meta refresh 被拦截时的兜底（路径用 encodeURI 保证中文文件名可用）
+  setTimeout(function () {
+    location.replace('dist/' + encodeURIComponent('高中化学方程式可视化.html'));
+  }, 300);
+</script>
+</body>
+</html>
