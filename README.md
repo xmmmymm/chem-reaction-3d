@@ -129,3 +129,16 @@ _vendor/        离线依赖（three/KaTeX/Tailwind），字体已内联
 ## 数据说明
 
 289 个方程与 `方程式/` 下 289 张 PNG 一一对应。整理过程中的勘误（如必修1 火法炼锌配平、反应条件补全、LaTeX 标签修复）记录在 `方程式/LaTeX 版/勘误说明.md`。
+
+## 配套项目
+
+本项目讲**反应怎么发生**（断键、成键、原子守恒）。与之配套的出题工具：
+
+| 项目 | 用途 | 形态 |
+|---|---|---|
+| [chemistry-equation-printer](https://github.com/xmmmymm/chemistry-equation-printer) | 把方程式当**考题**用：392 条人教版方程式题库、5 种题型、题目卷 + 答案卷 PDF 导出 | Electron 桌面应用（Windows 安装包 / 免安装版），完全离线 |
+| [electrolyte-ionization](https://github.com/xmmmymm/electrolyte-ionization) | 本项目必修1「一、电离方程式」那 5 条的原理讲解：离子从晶格到溶液的 3D 过程 | 零构建离线单页；[在线](https://xmmmymm.github.io/electrolyte-ionization/) |
+
+即：**本项目看「方程式的微观过程」，equation-printer 拿「方程式组卷考学生」**。
+
+全部项目见索引：**[chem-edu-index](https://github.com/xmmmymm/chem-edu-index)**
